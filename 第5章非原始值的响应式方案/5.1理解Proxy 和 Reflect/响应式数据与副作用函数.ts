@@ -255,3 +255,5 @@ effect(() => {
         console.log(key)
     }
 })
+
+export default void 0
