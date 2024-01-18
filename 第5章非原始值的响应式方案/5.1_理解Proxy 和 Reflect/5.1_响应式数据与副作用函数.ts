@@ -1,6 +1,3 @@
-// import { EffectFn, Options } from './interfaces/reactive.interface'
-
-
 interface Options {
     immediate?: boolean;
     lazy?: boolean;
