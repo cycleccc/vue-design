@@ -1,5 +1,16 @@
 {
-	"dependencies": {
-		"typescript": "^5.3.3"
-	}
+    "scripts": {
+        "precommit": "tsc"
+    },
+    "dependencies": {
+        "typescript": "^5.3.3"
+    },
+    "devDependencies": {
+        "husky": "^8.0.3"
+    },
+    "husky": {
+        "hooks": {
+            "pre-commit": "tsc"
+        }
+    }
 }
