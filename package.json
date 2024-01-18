@@ -1,7 +1,8 @@
 {
     "scripts": {
         "precommit": "tsc",
-        "build": "tsc"
+        "build": "tsc",
+        "prepare": "husky install"
     },
     "devDependencies": {
         "husky": "^8.0.3",
