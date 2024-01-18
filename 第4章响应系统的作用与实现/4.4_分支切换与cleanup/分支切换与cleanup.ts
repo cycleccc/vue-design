@@ -1,4 +1,13 @@
-import { EffectFn } from './interfaces/reactive.interface'
+interface Options {
+    immediate?: boolean;
+    lazy?: boolean;
+    flush?: string;
+    scheduler?: (effectFn: EffectFn) => void;
+    // 其他可能的字段...
+}
+
+type EffectFn = (() => void) & { options?: Options, deps: Set<EffectFn>[] }
+
 
 // 用一个全局变量存储被注册的副作用函数
 let activeEffect: EffectFn
@@ -83,5 +92,3 @@ effect(function effectFn() {
     document.body.innerText = obj.ok ? obj.text : 'not'
     console.log('触发了effect函数')
 })
-
-export default void 0
