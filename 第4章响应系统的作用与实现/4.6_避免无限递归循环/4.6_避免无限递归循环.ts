@@ -12,7 +12,7 @@ type EffectFn = (() => void) & { options?: Options, deps: Set<EffectFn>[] }
 // 用一个全局变量存储当前激活的 effect 函数
 let activeEffect: EffectFn
 // effect 栈
-const effectStack: EffectFn[] = []  // 新增
+const effectStack: EffectFn[] = []
 
 function effect(fn: Function) {
     const effectFn: EffectFn = () => {
@@ -70,7 +70,7 @@ function trigger(target: Object, key: String | Symbol) {
     if (!depsMap) return
     const effects = depsMap.get(key)
 
-    const effectsToRun: Set<EffectFn> = new Set(effects)
+    const effectsToRun: Set<EffectFn> = new Set()
     effects && effects.forEach((effectFn: EffectFn) => {
         // 如果 trigger 触发执行的副作用函数与当前正在执行的副作用函数相同，则不触发执行
         if (effectFn !== activeEffect) {  // 新增
