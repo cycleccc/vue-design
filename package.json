@@ -19,5 +19,5 @@
             "git add dist",
             "git add -u"
         ]
-    },
+    }
 }
