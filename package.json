@@ -1,16 +1,23 @@
 {
     "scripts": {
-        "precommit": "tsc"
-    },
-    "dependencies": {
-        "typescript": "^5.3.3"
+        "precommit": "tsc",
+        "build": "tsc"
     },
     "devDependencies": {
-        "husky": "^8.0.3"
+        "husky": "^8.0.3",
+        "lint-staged": "^15.2.0",
+        "typescript": "^5.3.3"
     },
     "husky": {
         "hooks": {
-            "pre-commit": "tsc"
+            "pre-commit": "lint-staged"
         }
-    }
+    },
+    "lint-staged": {
+        "*.ts": [
+            "npm run build",
+            "git add dist",
+            "git add -u"
+        ]
+    },
 }
