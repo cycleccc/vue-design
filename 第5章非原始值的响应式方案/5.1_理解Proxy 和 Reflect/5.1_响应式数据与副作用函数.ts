@@ -238,25 +238,6 @@ const p = new Proxy(obj, {
 
         return res
     },
-    // 拦截 in 操作
-    has(target, key) {
-        track(target, key)
-        return Reflect.has(target, key)
-    },
-    // 拦截 for...in 操作
-    ownKeys(target) {
-        // 使用ITERATE_KEY 代替 key，forin迭代操作针对对象，使用symbol作为唯一标识
-        track(target, ITERATE_KEY)
-        return Reflect.ownKeys(target)
-    },
-    // 拦截 delete 操作
-    deleteProperty(target, key) {
-        // 删除属性
-        const res = Reflect.deleteProperty(target, key)
-        // 触发删除操作
-        trigger(target, key, 'DELETE')
-        return res
-    },
 })
 
 effect(() => {
