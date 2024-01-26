@@ -88,7 +88,7 @@ function trigger(target, key, type) {
             effectFn();
         }
     });
-    if (type === 'ADD') {
+    if (type === TriggerKey.ADD || type === TriggerKey.DELETE) {
         const iterateEffects = depsMap.get(ITERATE_KEY);
         iterateEffects && iterateEffects.forEach((effectFn) => {
             if (effectFn !== activeEffect) {
@@ -232,20 +232,27 @@ const p = new Proxy(obj, {
     // 拦截 delete 操作
     deleteProperty(target, key) {
         // 删除属性
+        console.log(`拦截到了delete操作，target=${JSON.stringify(target)},key=${String(ITERATE_KEY)}`);
         const res = Reflect.deleteProperty(target, key);
         // 触发删除操作
         trigger(target, key, TriggerKey.DELETE);
         return res;
     },
 });
-// 拦截in操作符
+// 拦截 in 操作符
 // effect(() => {
 //     'foo' in p
-//     console.log("触发了in操作符");
+//     console.log("触发了in操作");
 // })
-// 拦截for...in 操作
+// 拦截 for...in 操作
+// effect(() => {
+//     for (const key in p) {
+//         console.log(key);
+//     }
+//     console.log("触发了for...in操作");
+// })
+// 拦截 delete 操作
 effect(() => {
-    for (const key in p) {
-        console.log(key);
-    }
+    delete p.foo;
+    console.log("触发了delete操作");
 });
