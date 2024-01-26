@@ -15,10 +15,9 @@
         }
     },
     "lint-staged": {
-        "*.ts": [
-            "pnpm run build",
-            "git add dist",
-            "git add -u"
+        "*.{js,jsx,ts,tsx}": [
+            "tsc",
+            "git add"
         ]
     }
 }
