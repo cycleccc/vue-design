@@ -60,26 +60,6 @@ function cleanup(effectFn: EffectFn) {
     effectFn.deps.length = 0
 }
 
-
-const bucket = new WeakMap()
-function track(target: Object, key: string | symbol) {
-    // 没有 activeEffect，直接 return
-    if (!activeEffect) return
-    let depsMap = bucket.get(target)
-    if (!depsMap) {
-        bucket.set(target, (depsMap = new Map()))
-    }
-    let deps = depsMap.get(key)
-    if (!deps) {
-        depsMap.set(key, (deps = new Set()))
-    }
-    // 把当前激活的副作用函数添加到依赖集合 deps 中
-    deps.add(activeEffect)
-    // deps 就是一个与当前副作用函数存在联系的依赖集合
-    // 将其添加到 activeEffect.deps 数组中
-    activeEffect.deps.push(deps)
-}
-
 // 在 set 拦截函数内调用 trigger 函数触发变化
 function trigger(target: Object, key: string | symbol, type?: TriggerKey) {
     const depsMap = bucket.get(target)
@@ -120,6 +100,26 @@ function trigger(target: Object, key: string | symbol, type?: TriggerKey) {
     }
 }
 
+const bucket = new WeakMap()
+function track(target: Object, key: string | symbol) {
+    // 没有 activeEffect，直接 return
+    if (!activeEffect) return
+    let depsMap = bucket.get(target)
+    if (!depsMap) {
+        bucket.set(target, (depsMap = new Map()))
+    }
+    let deps = depsMap.get(key)
+    if (!deps) {
+        depsMap.set(key, (deps = new Set()))
+    }
+    // 把当前激活的副作用函数添加到依赖集合 deps 中
+    deps.add(activeEffect)
+    // deps 就是一个与当前副作用函数存在联系的依赖集合
+    // 将其添加到 activeEffect.deps 数组中
+    activeEffect.deps.push(deps)
+}
+
+// computed实现
 function computed(getter: Function) {
     // value 用来缓存上一次计算的值
     let value: any
@@ -166,6 +166,7 @@ function traverse(value: any, seen = new Set()) {
     return value
 }
 
+// watch实现
 function watch(source: any, cb: Function, options: Options) {
     let getter: Function
     if (typeof source === 'function') {
@@ -218,36 +219,8 @@ function watch(source: any, cb: Function, options: Options) {
     }
 }
 
-// 解决新旧相同值触发set操作
-// const obj: { [key: string | symbol]: string | boolean | number | undefined, foo?: number }
-//     = {
-//     foo: 1
-// }
-
-// 解决原型链父子继承问题
-const obj = {};
-const child = reactive(obj);
-
-// 书中使用parent变量，在此处parent已被底层库占用
-const proto = { bar: 1 };
-const objParent = reactive(proto);
-
-// 使用 parent 作为 child 的原型
-Object.setPrototypeOf(child, objParent);
-
-effect(() => {
-    console.log(哦比较.bar);
-    console.log('触发了原型链访问操作');
-
-})
-
-child.bar = 2;
-
-console.log(obj);
-
-
-// 代理对象
-function reactive(obj: object) {
+// 代理对象工厂函数
+function createReactive<T extends object>(obj: T, isShallow = false): T {
     return new Proxy(obj, {
         // 拦截读取操作，接收第三个参数 receiver
         get(target: any, key, receiver) {
@@ -258,7 +231,15 @@ function reactive(obj: object) {
             }
             track(target, key)
             // 使用 Reflect.get 返回读取到的属性值
-            return Reflect.get(target, key, receiver)
+            const res = Reflect.get(target, key, receiver);
+            if (isShallow) {
+                return res;
+            }
+            if (typeof res === 'object' && res !== null) {
+                // 调用 reactive 将结果包装成响应式数据并返回
+                return reactive(res);
+            }
+            return res
         },
         // 拦截设置操作
         set(target, key, newVal, receiver) {
@@ -306,12 +287,20 @@ function reactive(obj: object) {
     })
 }
 
+// 代理对象
+function reactive<T extends object>(obj: T) {
+    return createReactive(obj);
+}
 
-// 解决新旧相同值触发set操作
-// const p = reactive(obj);
-// effect(() => {
-//     console.log(p.foo);
-//     console.log('触发了get操作');
-// })
+// 浅响应代理对象
+function shallowReactive<T extends object>(obj: T) {
+    return createReactive(obj, true);
+}
 
-// p.foo;
+
+const p = reactive({ foo: { bar: 1 } });
+effect(() => {
+    console.log(p.foo.bar);
+    console.log('触发了深层对象的响应式')
+})
+p.foo.bar = 2;
