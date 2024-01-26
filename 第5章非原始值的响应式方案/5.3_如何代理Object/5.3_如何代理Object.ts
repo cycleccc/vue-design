@@ -99,7 +99,7 @@ function trigger(target: Object, key: string | symbol, type?: TriggerKey) {
             effectFn()
         }
     })
-
+    // 当操作类型为 ADD 或 DELETE 时，需要触发与 ITERATE_KEY 相关联的副作用函数重新执行
     if (type === TriggerKey.ADD || type === TriggerKey.DELETE) {
         const iterateEffects = depsMap.get(ITERATE_KEY)
         iterateEffects && iterateEffects.forEach((effectFn: EffectFn) => {
