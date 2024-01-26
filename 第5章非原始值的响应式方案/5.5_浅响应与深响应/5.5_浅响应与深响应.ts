@@ -256,10 +256,6 @@ function createReactive<T extends object>(obj: T, isShallow = false): T {
                 // 把副作用函数从桶里取出并执行
                 trigger(target, key, type)
             }
-            if (oldVal !== newVal) {
-
-            }
-
             return res
         },
         // 拦截 in 操作

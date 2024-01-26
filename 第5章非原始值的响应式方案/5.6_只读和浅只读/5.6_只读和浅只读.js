@@ -240,8 +240,6 @@ function createReactive(obj, isShallow = false, isReadonly = false) {
                 // 把副作用函数从桶里取出并执行
                 trigger(target, key, type);
             }
-            if (oldVal !== newVal) {
-            }
             return res;
         },
         // 拦截 in 操作

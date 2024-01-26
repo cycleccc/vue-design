@@ -236,7 +236,7 @@ const objParent = reactive(proto);
 Object.setPrototypeOf(child, objParent);
 
 effect(() => {
-    console.log(哦比较.bar);
+    console.log(child.bar);
     console.log('触发了原型链访问操作');
 
 })
@@ -274,9 +274,6 @@ function reactive(obj: object) {
             if (!Object.is(newVal, oldVal) && (target === receiver.raw)) {
                 // 把副作用函数从桶里取出并执行
                 trigger(target, key, type)
-            }
-            if (oldVal !== newVal) {
-
             }
 
             return res
