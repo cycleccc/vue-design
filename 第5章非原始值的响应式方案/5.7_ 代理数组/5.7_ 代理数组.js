@@ -70,6 +70,16 @@ function trigger(target, key, type) {
             effectFn();
         }
     });
+    if (type === 'ADD' && Array.isArray(target)) {
+        // 取出与length相关联的副作用函数
+        const lengthEffects = depsMap.get('length');
+        // 将这些副作用函数添加到effectsToRun中，待执行
+        lengthEffects && lengthEffects.forEach(effectFn => {
+            if (effectFn !== activeEffect) {
+                effectsToRun.add(effectFn);
+            }
+        });
+    }
     // 当操作类型为 ADD 或 DELETE 时，需要触发与 ITERATE_KEY 相关联的副作用函数重新执行
     if (type === TriggerKey.ADD || type === TriggerKey.DELETE) {
         const iterateEffects = depsMap.get(ITERATE_KEY);
@@ -232,7 +242,7 @@ function createReactive(obj, isShallow = false, isReadonly = false) {
             }
             const oldVal = target[key];
             // 如果属性不存在，则说明是在添加新属性，否则是设置已有属性
-            const type = Object.prototype.hasOwnProperty.call(target, key) ? TriggerKey.SET : TriggerKey.ADD;
+            const type = Array.isArray(target) ? Number(key) < target.length ? TriggerKey.SET : TriggerKey.ADD : Object.prototype.hasOwnProperty.call(target, key) ? TriggerKey.SET : TriggerKey.ADD;
             // 设置属性值
             const res = Reflect.set(target, key, newVal, receiver);
             // 新旧值不相等时且receiver是tawrge的代理对象时才触发更新
@@ -295,7 +305,7 @@ function shallowReadonly(obj) {
 // 5.7.1 数组的索引与length
 const arr = reactive(['foo']);
 effect(() => {
-    console.log(arr[0]);
+    console.log(arr.length);
     console.log('触发数组更改响应');
 });
 arr[1] = 'bar';
