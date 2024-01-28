@@ -289,8 +289,9 @@ function createReactive<T extends object>(obj: T, isShallow = false, isReadonly 
         // 拦截 for...in 操作
         ownKeys(target) {
             // 使用ITERATE_KEY 代替 key，forin迭代操作针对对象，使用symbol作为唯一标识
+            // 如果操作目标 target 是数组，则使用 length 属性作为 key 并建立响应联系
             console.log(`拦截到了for...in操作，target=${ JSON.stringify(target) },key=${ String(ITERATE_KEY) }`);
-            track(target, ITERATE_KEY)
+            track(target, Array.isArray(target) ? 'length' : ITERATE_KEY);
             return Reflect.ownKeys(target)
         },
         // 拦截 delete 操作
@@ -348,3 +349,16 @@ function shallowReadonly<T extends object>(obj: T) {
 // })
 
 // arr[1] = 'bar';
+
+// 5.7.2 遍历数组
+const arr = reactive(['foo']);
+
+effect(() => {
+    for (const key in arr) {
+        console.log(key);
+    }
+    console.log('触发数组 for...in 响应');
+})
+
+arr[1] = 'bar';
+arr.length = 0;
