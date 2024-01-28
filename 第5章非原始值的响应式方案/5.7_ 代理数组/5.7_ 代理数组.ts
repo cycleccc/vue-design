@@ -350,15 +350,15 @@ function shallowReadonly<T extends object>(obj: T) {
 
 // arr[1] = 'bar';
 
-// 5.7.2 遍历数组
-const arr = reactive(['foo']);
+// 5.7.2 遍历数组监听length
+// const arr = reactive(['foo']);
 
-effect(() => {
-    for (const key in arr) {
-        console.log(key);
-    }
-    console.log('触发数组 for...in 响应');
-})
+// effect(() => {
+//     for (const key in arr) {
+//         console.log(key);
+//     }
+//     console.log('触发数组 for...in 响应');
+// })
 
-arr[1] = 'bar';
-arr.length = 0;
+// arr[1] = 'bar';
+// arr.length = 0;
