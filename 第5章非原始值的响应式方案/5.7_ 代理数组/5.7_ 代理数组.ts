@@ -61,7 +61,7 @@ function cleanup(effectFn: EffectFn) {
 }
 
 // 在 set 拦截函数内调用 trigger 函数触发变化
-function trigger(target: Object, key: string | symbol, type?: TriggerKey) {
+function trigger(target: Object, key: string | symbol, type?: TriggerKey, newVal?: any): void {
     const depsMap = bucket.get(target)
     if (!depsMap) return
 
@@ -72,16 +72,7 @@ function trigger(target: Object, key: string | symbol, type?: TriggerKey) {
             effectsToRun.add(effectFn)
         }
     })
-    effectsToRun.forEach((effectFn: EffectFn) => {
-        // 如果一个副作用函数存在调度器，则调用该调度器，并将副作用函数作为参数传递
-        if (effectFn.options?.scheduler) {
-            effectFn.options.scheduler(effectFn)
-        } else {
-            // 否则直接执行副作用函数（之前的默认行为）
-            effectFn()
-        }
-    })
-    if (type === 'ADD' && Array.isArray(target)) {
+    if (type === TriggerKey.ADD && Array.isArray(target)) {
         // 取出与length相关联的副作用函数
         const lengthEffects: EffectFn[] = depsMap.get('length');
         // 将这些副作用函数添加到effectsToRun中，待执行
@@ -99,15 +90,29 @@ function trigger(target: Object, key: string | symbol, type?: TriggerKey) {
                 effectsToRun.add(effectFn)
             }
         })
+    }
 
-        effectsToRun.forEach((effectFn) => {
-            if (effectFn?.options?.scheduler) {
-                effectFn.options.scheduler(effectFn)
-            } else {
-                effectFn()
+    if (Array.isArray(target) && key === 'length') {
+        // 对于索引大于或等于新的 length 值的元素，需要把所有相关联的副作用函数取出并添加到 effectsToRun 中待执行
+        depsMap.forEach((effects: EffectFn[], key: any) => {
+            if (key >= newVal) {
+                effects.forEach((effectFn: EffectFn) => {
+                    if (effectFn !== activeEffect) {
+                        effectsToRun.add(effectFn);
+                    }
+                })
             }
         })
     }
+    effectsToRun.forEach(effectFn => {
+        // 如果一个副作用函数存在调度器，则调用该调度器，并将副作用函数作为参数传递
+        if (effectFn?.options?.scheduler) {
+            effectFn.options.scheduler(effectFn)
+        } else {
+            // 否则直接执行副作用函数（之前的默认行为）
+            effectFn()
+        }
+    })
 }
 
 const bucket = new WeakMap()
@@ -271,7 +276,7 @@ function createReactive<T extends object>(obj: T, isShallow = false, isReadonly 
             // 新旧值不相等时且receiver是tawrge的代理对象时才触发更新
             if (!Object.is(newVal, oldVal) && (target === receiver.raw)) {
                 // 把副作用函数从桶里取出并执行
-                trigger(target, key, type)
+                trigger(target, key, type, newVal);
             }
             return res
         },
@@ -335,11 +340,11 @@ function shallowReadonly<T extends object>(obj: T) {
 // arr[0] = 'bar';
 
 // 5.7.1 数组的索引与length
-const arr = reactive(['foo']);
+// const arr = reactive(['foo']);
 
-effect(() => {
-    console.log(arr.length);
-    console.log('触发数组更改响应')
-})
+// effect(() => {
+//     console.log(arr.length);
+//     console.log('触发数组更改响应')
+// })
 
-arr[1] = 'bar';
+// arr[1] = 'bar';
