@@ -244,8 +244,8 @@ function createReactive<T extends object>(obj: T, isShallow = false, isReadonly 
             if (key === 'raw') {
                 return target
             }
-            // 非只读的时候才需要建立响应联系
-            if (!isReadonly) {
+            // 非只读和key不为symbol的时候才需要建立响应联系
+            if (!isReadonly && typeof target !== 'symbol') {
                 track(target, key);
             }
             // 使用 Reflect.get 返回读取到的属性值
@@ -350,7 +350,7 @@ function shallowReadonly<T extends object>(obj: T) {
 
 // arr[1] = 'bar';
 
-// 5.7.2 遍历数组监听length
+// 5.7.2 遍历数组监听 for...in length
 // const arr = reactive(['foo']);
 
 // effect(() => {
@@ -362,3 +362,17 @@ function shallowReadonly<T extends object>(obj: T) {
 
 // arr[1] = 'bar';
 // arr.length = 0;
+
+
+// 遍历数组监听for...of
+const arr = reactive([1, 2, 3, 4, 5])
+
+effect(() => {
+    for (const val of arr) {
+        console.log(val)
+    }
+    console.log('触发数组 for...of 响应');
+})
+
+arr[1] = 6
+arr.length = 0  
