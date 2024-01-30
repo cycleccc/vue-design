@@ -79,9 +79,10 @@ function trigger(target, key, type, newVal) {
         });
     }
     if (Array.isArray(target) && key === 'length') {
+        // console.log('depsMap', depsMap);
         // 对于索引大于或等于新的 length 值的元素，需要把所有相关联的副作用函数取出并添加到 effectsToRun 中待执行
         depsMap.forEach((effects, key) => {
-            if (key >= newVal) {
+            if (typeof key !== 'symbol' && key !== length && key >= newVal) {
                 effects.forEach((effectFn) => {
                     if (effectFn !== activeEffect) {
                         effectsToRun.add(effectFn);
@@ -238,7 +239,7 @@ function createReactive(obj, isShallow = false, isReadonly = false) {
         },
         // 拦截设置操作
         set(target, key, newVal, receiver) {
-            console.log(`拦截到了set操作，target=${JSON.stringify(target)},key=${String(key)}`);
+            console.log(`拦截到了set操作，target=${JSON.stringify(target)},key=${String(key)}`, newVal);
             if (isReadonly) {
                 console.warn(`属性${String(key)}是只读的`);
                 return true;
@@ -248,7 +249,7 @@ function createReactive(obj, isShallow = false, isReadonly = false) {
             const type = Array.isArray(target) ? Number(key) < target.length ? TriggerKey.SET : TriggerKey.ADD : Object.prototype.hasOwnProperty.call(target, key) ? TriggerKey.SET : TriggerKey.ADD;
             // 设置属性值
             const res = Reflect.set(target, key, newVal, receiver);
-            // 新旧值不相等时且receiver是tawrge的代理对象时才触发更新
+            // 新旧值不相等时且receiver是target的代理对象时才触发更新
             if (!Object.is(newVal, oldVal) && (target === receiver.raw)) {
                 // 把副作用函数从桶里取出并执行
                 trigger(target, key, type, newVal);
