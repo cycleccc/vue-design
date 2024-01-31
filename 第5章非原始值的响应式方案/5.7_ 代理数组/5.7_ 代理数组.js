@@ -49,6 +49,7 @@ function cleanup(effectFn) {
 }
 // 在 set 拦截函数内调用 trigger 函数触发变化
 function trigger(target, key, type, newVal) {
+    console.log(`触发了trigger,key=${key.toString()},type=${type},newVal=${newVal}`);
     const depsMap = bucket.get(target);
     if (!depsMap)
         return;
@@ -105,9 +106,10 @@ function trigger(target, key, type, newVal) {
 }
 const bucket = new WeakMap();
 function track(target, key) {
-    // 没有 activeEffect，直接 return
-    if (!activeEffect)
+    // 没有 activeEffect且数组方法还没执行完shouldTrack为false时，直接 return
+    if (!activeEffect && !shouldTrack)
         return;
+    console.log('shouldTracktrack', shouldTrack);
     let depsMap = bucket.get(target);
     if (!depsMap) {
         bucket.set(target, (depsMap = new Map()));
@@ -236,6 +238,25 @@ const arrayInstrumentations = {};
         return res;
     };
 });
+// 一个标记变量，代表是否进行追踪。默认值为 true，即允许追踪
+let shouldTrack = true;
+// 重写数组的 push 方法
+['push'].forEach((method) => {
+    // 取得原始 push 方法
+    const originMethod = Array.prototype[method];
+    // 重写
+    arrayInstrumentations[method] = function (...args) {
+        // 在调用原始方法之前，禁止追踪
+        shouldTrack = false;
+        // push 方法的默认行为
+        console.log('触发了==========shouldTrackingfalse');
+        let res = originMethod.apply(this, args);
+        console.log('触发了==========shouldTrackingtrue');
+        // 在调用原始方法之后，恢复原来的行为，即允许追踪
+        shouldTrack = true;
+        return res;
+    };
+});
 // 代理对象工厂函数
 function createReactive(obj, isShallow = false, isReadonly = false) {
     return new Proxy(obj, {
@@ -268,12 +289,12 @@ function createReactive(obj, isShallow = false, isReadonly = false) {
         },
         // 拦截设置操作
         set(target, key, newVal, receiver) {
-            console.log(`拦截到了set操作，target=${JSON.stringify(target)},key=${String(key)}`, newVal);
             if (isReadonly) {
                 console.warn(`属性${String(key)}是只读的`);
                 return true;
             }
             const oldVal = target[key];
+            console.log(`拦截到了set操作，target=${JSON.stringify(target)},key=${String(key)},newVal=${newVal},oldVal=${oldVal}`);
             // 如果属性不存在，则说明是在添加新属性，否则是设置已有属性
             const type = Array.isArray(target) ? Number(key) < target.length ? TriggerKey.SET : TriggerKey.ADD : Object.prototype.hasOwnProperty.call(target, key) ? TriggerKey.SET : TriggerKey.ADD;
             // 设置属性值
@@ -384,6 +405,16 @@ function shallowReadonly(obj) {
 // const arr = reactive([obj]);
 // console.log(arr.includes(arr[0]));
 // includes在代理对象上查找obj找不到的问题
-const obj = {};
-const arr = reactive([obj]);
-console.log(arr.includes(obj));
+// const obj = {};
+// const arr = reactive([obj]);
+// console.log(arr.includes(obj));
+// 5.7.4 隐式修改数组长度的原型方法
+const arr = reactive([]);
+// 第一个副作用函数
+effect(() => {
+    arr.push(1);
+});
+// 第二个副作用函数
+effect(() => {
+    arr.push(1);
+});
