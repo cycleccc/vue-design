@@ -212,15 +212,44 @@ function watch(source, cb, options) {
         oldValue = effectFn();
     }
 }
+// const originMethod = Array.prototype.includes;
+// const arrayInstrumentations = {
+//     includes: function (searchElement: any, fromIndex?: number): any {
+//         let res = originMethod.apply(this, [searchElement, fromIndex]);
+//         if (res === false) {
+//             res = originMethod.apply(Reflect.get(this, "raw"), [searchElement, fromIndex]);
+//         }
+//         return res;
+//     }
+// };
+const arrayInstrumentations = {};
+['includes', 'indexOf', 'lastIndexOf'].forEach((method) => {
+    const originMethod = Array.prototype[method];
+    arrayInstrumentations[method] = function (...args) {
+        // this 是代理对象，先在代理对象中查找，将结果存储到 res 中
+        let res = originMethod.apply(this, args);
+        if (res === false || res === -1) {
+            // res 为 false 说明没找到，通过 this.raw 拿到原始数组，再去其中查找，并更新 res 值
+            res = originMethod.apply(Reflect.get(this, "raw"), args);
+        }
+        // 返回最终结果
+        return res;
+    };
+});
 // 代理对象工厂函数
 function createReactive(obj, isShallow = false, isReadonly = false) {
     return new Proxy(obj, {
         // 拦截读取操作，接收第三个参数 receiver
         get(target, key, receiver) {
-            console.log(`拦截到了get操作，target=${JSON.stringify(target)},key=${String(key)}`);
+            console.log(`拦截到了get操作，target=${JSON.stringify(target)},key=${String(key)}`, receiver);
             // 代理对象可以通过 raw 属性访问原始数据
             if (key === 'raw') {
                 return target;
+            }
+            // 如果操作的目标对象是数组，并且 key 存在于 arrayInstrumentations 上，
+            // 那么返回定义在arryInstrumentation 上的值。
+            if (Array.isArray(target) && arrayInstrumentations.hasOwnProperty(key)) {
+                return Reflect.get(arrayInstrumentations, key, receiver);
             }
             // 非只读和key不为symbol的时候才需要建立响应联系
             if (!isReadonly && typeof key !== 'symbol') {
@@ -284,9 +313,19 @@ function createReactive(obj, isShallow = false, isReadonly = false) {
         },
     });
 }
+// 定义一个 Map 实例，存储原始对象到代理对象的映射。
+const reactiveMap = new Map();
 // 深响应代理对象
 function reactive(obj) {
-    return createReactive(obj);
+    // 优先通过原始对象 obj 寻找之前创建的代理对象，如果找到了，直接返回已有的代理对象
+    const existionProxy = reactiveMap.get(obj);
+    if (existionProxy)
+        return existionProxy;
+    // 否则，创建新的代理对象
+    const proxy = createReactive(obj);
+    // 存储到 Map 中，从而避免重复创建
+    reactiveMap.set(obj, proxy);
+    return proxy;
 }
 // 浅响应代理对象
 function shallowReactive(obj) {
@@ -325,12 +364,26 @@ function shallowReadonly(obj) {
 // arr[1] = 'bar';
 // arr.length = 0;
 // 遍历数组监听for...of
-const arr = reactive([1, 2, 3, 4, 5]);
-effect(() => {
-    for (const val of arr) {
-        console.log(val);
-    }
-    console.log('触发数组 for...of 响应');
-});
-arr[1] = 6;
-arr.length = 0;
+// const arr = reactive([1, 2, 3, 4, 5])
+// effect(() => {
+//     for (const val of arr) {
+//         console.log(val)
+//     }
+//     console.log('触发数组 for...of 响应');
+// })
+// arr[1] = 6
+// arr.length = 0
+// 5.7.3 数组的查找方法
+// const arr = reactive([1, 2]);
+// effect(() => {
+//     console.log(arr.includes(1));
+// })
+// arr[0] = 3;
+//  重复创建代理对象问题
+// const obj = {};
+// const arr = reactive([obj]);
+// console.log(arr.includes(arr[0]));
+// includes在代理对象上查找obj找不到的问题
+const obj = {};
+const arr = reactive([obj]);
+console.log(arr.includes(obj));
