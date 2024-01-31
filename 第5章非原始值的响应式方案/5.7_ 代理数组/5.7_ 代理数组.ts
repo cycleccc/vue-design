@@ -97,7 +97,7 @@ function trigger(target: Object, key: string | symbol, type?: TriggerKey, newVal
 
         // 对于索引大于或等于新的 length 值的元素，需要把所有相关联的副作用函数取出并添加到 effectsToRun 中待执行
         depsMap.forEach((effects: EffectFn[], key: any) => {
-            if (typeof key !== 'symbol' && key !== length && key >= newVal) {
+            if (key >= newVal) {
                 effects.forEach((effectFn: EffectFn) => {
                     if (effectFn !== activeEffect) {
                         effectsToRun.add(effectFn);
@@ -247,7 +247,7 @@ function createReactive<T extends object>(obj: T, isShallow = false, isReadonly 
                 return target
             }
             // 非只读和key不为symbol的时候才需要建立响应联系
-            if (!isReadonly && typeof target !== 'symbol') {
+            if (!isReadonly && typeof key !== 'symbol') {
                 track(target, key);
             }
             // 使用 Reflect.get 返回读取到的属性值
