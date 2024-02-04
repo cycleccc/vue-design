@@ -12,6 +12,7 @@ var TriggerKey;
     TriggerKey["DELETE"] = "DELETE";
 })(TriggerKey || (TriggerKey = {}));
 function effect(fn, options) {
+    debugger;
     const effectFn = () => {
         cleanup(effectFn);
         // 当调用 effect 注册副作用函数时，将副作用函数赋值给 activeEffect
@@ -107,9 +108,8 @@ function trigger(target, key, type, newVal) {
 const bucket = new WeakMap();
 function track(target, key) {
     // 没有 activeEffect且数组方法还没执行完shouldTrack为false时，直接 return
-    if (!activeEffect && !shouldTrack)
+    if (!activeEffect || !shouldTrack)
         return;
-    console.log('shouldTracktrack', shouldTrack);
     let depsMap = bucket.get(target);
     if (!depsMap) {
         bucket.set(target, (depsMap = new Map()));
@@ -249,9 +249,7 @@ let shouldTrack = true;
         // 在调用原始方法之前，禁止追踪
         shouldTrack = false;
         // push 方法的默认行为
-        console.log('触发了==========shouldTrackingfalse');
         let res = originMethod.apply(this, args);
-        console.log('触发了==========shouldTrackingtrue');
         // 在调用原始方法之后，恢复原来的行为，即允许追踪
         shouldTrack = true;
         return res;
