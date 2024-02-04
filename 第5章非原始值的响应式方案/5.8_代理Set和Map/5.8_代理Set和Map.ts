@@ -400,7 +400,6 @@ function shallowReactive<T extends object>(obj: T) {
 function readonly<T extends object>(obj: T) {
     return createReactive(obj, false, true);
 }
-
 // 浅只读响应代理对象
 function shallowReadonly<T extends object>(obj: T) {
     return createReactive(obj, true, true);
@@ -416,3 +415,13 @@ obj.foo = 2 // 设置属性
 const map = new Map()
 map.set('key', 1) // 设置数据
 map.get('key') // 读取数据
+
+const proxy = reactive(new Map([['key', 1]]));
+
+console.log(proxy);
+
+effect(() => {
+    console.log(proxy.get('key'));
+})
+
+proxy.set('key', 2)

@@ -357,61 +357,18 @@ function readonly(obj) {
 function shallowReadonly(obj) {
     return createReactive(obj, true, true);
 }
-// 5.7 仅仅修改length内的值与对象响应式没有区别
-// const arr = reactive(['foo']);
-// effect(() => {
-//     console.log(arr[0]);
-//     console.log('触发数组更改响应')
-// })
-// arr[0] = 'bar';
-// 5.7.1 数组的索引与length
-// const arr = reactive(['foo']);
-// effect(() => {
-//     console.log(arr.length);
-//     console.log('触发数组更改响应')
-// })
-// arr[1] = 'bar';
-// 5.7.2 遍历数组监听 for...in length
-// const arr = reactive(['foo']);
-// effect(() => {
-//     for (const key in arr) {
-//         console.log(key);
-//     }
-//     console.log('触发数组 for...in 响应');
-// })
-// arr[1] = 'bar';
-// arr.length = 0;
-// 遍历数组监听for...of
-// const arr = reactive([1, 2, 3, 4, 5])
-// effect(() => {
-//     for (const val of arr) {
-//         console.log(val)
-//     }
-//     console.log('触发数组 for...of 响应');
-// })
-// arr[1] = 6
-// arr.length = 0
-// 5.7.3 数组的查找方法
-// const arr = reactive([1, 2]);
-// effect(() => {
-//     console.log(arr.includes(1));
-// })
-// arr[0] = 3;
-//  重复创建代理对象问题
-// const obj = {};
-// const arr = reactive([obj]);
-// console.log(arr.includes(arr[0]));
-// includes在代理对象上查找obj找不到的问题
-// const obj = {};
-// const arr = reactive([obj]);
-// console.log(arr.includes(obj));
-// 5.7.4 隐式修改数组长度的原型方法
-const arr = reactive([]);
-// 第一个副作用函数
+// 5.8.1 如何代理 set和map
+// 普通对象的读取和设置操作
+const obj = { foo: 1 };
+obj.foo; // 读取属性
+obj.foo = 2; // 设置属性
+// 用 get/set 方法操作 Map 数据
+const map = new Map();
+map.set('key', 1); // 设置数据
+map.get('key'); // 读取数据
+const proxy = reactive(new Map([['key', 1]]));
+console.log(proxy);
 effect(() => {
-    arr.push(1);
+    console.log(proxy.get('key'));
 });
-// 第二个副作用函数
-effect(() => {
-    arr.push(1);
-});
+proxy.set('key', 2);
