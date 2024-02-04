@@ -12,7 +12,6 @@ var TriggerKey;
     TriggerKey["DELETE"] = "DELETE";
 })(TriggerKey || (TriggerKey = {}));
 function effect(fn, options) {
-    debugger;
     const effectFn = () => {
         cleanup(effectFn);
         // 当调用 effect 注册副作用函数时，将副作用函数赋值给 activeEffect
@@ -240,8 +239,8 @@ const arrayInstrumentations = {};
 });
 // 一个标记变量，代表是否进行追踪。默认值为 true，即允许追踪
 let shouldTrack = true;
-// 重写数组的 push 方法
-['push'].forEach((method) => {
+// 重写数组的 push、pop、shift、unshift 以及 splice 方法
+['push', 'pop', 'shift', 'unshift', 'splice'].forEach((method) => {
     // 取得原始 push 方法
     const originMethod = Array.prototype[method];
     // 重写

@@ -31,7 +31,6 @@ enum TriggerKey {
 }
 
 function effect(fn: Function, options?: Options) {
-    debugger
     const effectFn: EffectFn = () => {
         cleanup(effectFn)
         // 当调用 effect 注册副作用函数时，将副作用函数赋值给 activeEffect
@@ -131,8 +130,8 @@ function trigger(target: Object, key: string | symbol, type?: TriggerKey, newVal
 const bucket = new WeakMap()
 function track(target: Object, key: string | symbol) {
     // 没有 activeEffect且数组方法还没执行完shouldTrack为false时，直接 return
+    if (!activeEffect || !shouldTrack) return;
 
-    if (!activeEffect || !shouldTrack) return
     let depsMap = bucket.get(target)
     if (!depsMap) {
         bucket.set(target, (depsMap = new Map()))
@@ -277,8 +276,8 @@ const arrayInstrumentations: ArrayInstrumentations = {} as ArrayInstrumentations
 
 // 一个标记变量，代表是否进行追踪。默认值为 true，即允许追踪
 let shouldTrack = true;
-// 重写数组的 push 方法
-['push'].forEach((method: string) => {
+// 重写数组的 push、pop、shift、unshift 以及 splice 方法
+['push', 'pop', 'shift', 'unshift', 'splice'].forEach((method: string) => {
     // 取得原始 push 方法
     const originMethod = (Array.prototype as any)[method]
     // 重写
