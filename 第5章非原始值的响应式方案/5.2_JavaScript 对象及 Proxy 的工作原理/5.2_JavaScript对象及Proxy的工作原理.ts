@@ -1,12 +1,12 @@
 interface Options {
-    immediate?: boolean;
-    lazy?: boolean;
-    flush?: string;
-    scheduler?: (effectFn: EffectFn) => void;
-    // 其他可能的字段...
+  immediate?: boolean
+  lazy?: boolean
+  flush?: string
+  scheduler?: (effectFn: EffectFn) => void
+  // 其他可能的字段...
 }
 
-type EffectFn = (() => Object | Number | String | Boolean) & { options?: Options, deps: Set<EffectFn>[] }
+type EffectFn = (() => Object | number | string | boolean) & { options?: Options, deps: Set<EffectFn>[] }
 
 // 用一个全局变量存储当前激活的 effect 函数
 let activeEffect: EffectFn
@@ -14,243 +14,238 @@ let activeEffect: EffectFn
 const effectStack: EffectFn[] = []
 
 function effect(fn: Function, options?: Options) {
-    const effectFn: EffectFn = () => {
-        cleanup(effectFn)
-        // 当调用 effect 注册副作用函数时，将副作用函数赋值给 activeEffect
-        activeEffect = effectFn
-        // 在调用副作用函数之前将当前副作用函数压栈
-        effectStack.push(effectFn)
-        // 将 fn 的执行结果存储到 res 中
-        const res = fn()
-        // 在当前副作用函数执行完毕后，将当前副作用函数弹出栈，并把 activeEffect 还原为之前的值
-        effectStack.pop()
-        activeEffect = effectStack[effectStack.length - 1]
-        return res
-    }
-    // 将 options 挂载到 effectFn 上
-    effectFn.options = options
-    // activeEffect.deps 用来存储所有与该副作用函数相关的依赖集合
-    effectFn.deps = []
-    // 只有非lazy的时候，才执行
-    if (options && !options.lazy) {
-        // 执行副作用函数
-        effectFn()
-    }
-    return effectFn;
+  const effectFn: EffectFn = () => {
+    cleanup(effectFn)
+    // 当调用 effect 注册副作用函数时，将副作用函数赋值给 activeEffect
+    activeEffect = effectFn
+    // 在调用副作用函数之前将当前副作用函数压栈
+    effectStack.push(effectFn)
+    // 将 fn 的执行结果存储到 res 中
+    const res = fn()
+    // 在当前副作用函数执行完毕后，将当前副作用函数弹出栈，并把 activeEffect 还原为之前的值
+    effectStack.pop()
+    activeEffect = effectStack[effectStack.length - 1]
+    return res
+  }
+  // 将 options 挂载到 effectFn 上
+  effectFn.options = options
+  // activeEffect.deps 用来存储所有与该副作用函数相关的依赖集合
+  effectFn.deps = []
+  // 只有非lazy的时候，才执行
+  if (options && !options.lazy) {
+    // 执行副作用函数
+    effectFn()
+  }
+  return effectFn
 }
 
 function cleanup(effectFn: EffectFn) {
-    // 遍历 effectFn.deps 数组
-    for (let i = 0; i < effectFn.deps.length; i++) {
-        // deps 是依赖集合
-        const deps = effectFn.deps[i]
-        // 将 effectFn 从依赖集合中移除
-        deps.delete(effectFn)
-    }
-    // 最后需要重置 effectFn.deps 数组
-    effectFn.deps.length = 0
+  // 遍历 effectFn.deps 数组
+  for (let i = 0; i < effectFn.deps.length; i++) {
+    // deps 是依赖集合
+    const deps = effectFn.deps[i]
+    // 将 effectFn 从依赖集合中移除
+    deps.delete(effectFn)
+  }
+  // 最后需要重置 effectFn.deps 数组
+  effectFn.deps.length = 0
 }
-
 
 const bucket = new WeakMap()
 function track(target: Object, key: string | symbol) {
-    // 没有 activeEffect，直接 return
-    if (!activeEffect) return
-    let depsMap = bucket.get(target)
-    if (!depsMap) {
-        bucket.set(target, (depsMap = new Map()))
-    }
-    let deps = depsMap.get(key)
-    if (!deps) {
-        depsMap.set(key, (deps = new Set()))
-    }
-    // 把当前激活的副作用函数添加到依赖集合 deps 中
-    deps.add(activeEffect)
-    // deps 就是一个与当前副作用函数存在联系的依赖集合
-    // 将其添加到 activeEffect.deps 数组中
-    activeEffect.deps.push(deps)
+  // 没有 activeEffect，直接 return
+  if (!activeEffect)
+    return
+  let depsMap = bucket.get(target)
+  if (!depsMap)
+    bucket.set(target, (depsMap = new Map()))
+
+  let deps = depsMap.get(key)
+  if (!deps)
+    depsMap.set(key, (deps = new Set()))
+
+  // 把当前激活的副作用函数添加到依赖集合 deps 中
+  deps.add(activeEffect)
+  // deps 就是一个与当前副作用函数存在联系的依赖集合
+  // 将其添加到 activeEffect.deps 数组中
+  activeEffect.deps.push(deps)
 }
 
 // 在 set 拦截函数内调用 trigger 函数触发变化
 function trigger(target: Object, key: string | symbol, type?: string) {
-    const depsMap = bucket.get(target)
-    if (!depsMap) return
+  const depsMap = bucket.get(target)
+  if (!depsMap)
+    return
 
-    const effects = depsMap.get(key)
-    const effectsToRun: Set<EffectFn> = new Set()
-    effects && effects.forEach((effectFn: EffectFn) => {
-        if (effectFn !== activeEffect) {
-            effectsToRun.add(effectFn)
-        }
-    })
-    effectsToRun.forEach((effectFn: EffectFn) => {
-        // 如果一个副作用函数存在调度器，则调用该调度器，并将副作用函数作为参数传递
-        if (effectFn.options?.scheduler) {
-            effectFn.options.scheduler(effectFn)
-        } else {
-            // 否则直接执行副作用函数（之前的默认行为）
-            effectFn()
-        }
-    })
-
-    if (type === 'ADD') {
-        const iterateEffects = depsMap.get(ITERATE_KEY)
-        iterateEffects && iterateEffects.forEach((effectFn: EffectFn) => {
-            if (effectFn !== activeEffect) {
-                effectsToRun.add(effectFn)
-            }
-        })
-
-        effectsToRun.forEach((effectFn) => {
-            if (effectFn?.options?.scheduler) {
-                effectFn.options.scheduler(effectFn)
-            } else {
-                effectFn()
-            }
-        })
+  const effects = depsMap.get(key)
+  const effectsToRun: Set<EffectFn> = new Set()
+  effects && effects.forEach((effectFn: EffectFn) => {
+    if (effectFn !== activeEffect)
+      effectsToRun.add(effectFn)
+  })
+  effectsToRun.forEach((effectFn: EffectFn) => {
+    // 如果一个副作用函数存在调度器，则调用该调度器，并将副作用函数作为参数传递
+    if (effectFn.options?.scheduler) {
+      effectFn.options.scheduler(effectFn)
     }
+    else {
+      // 否则直接执行副作用函数（之前的默认行为）
+      effectFn()
+    }
+  })
+
+  if (type === 'ADD') {
+    const iterateEffects = depsMap.get(ITERATE_KEY)
+    iterateEffects && iterateEffects.forEach((effectFn: EffectFn) => {
+      if (effectFn !== activeEffect)
+        effectsToRun.add(effectFn)
+    })
+
+    effectsToRun.forEach((effectFn) => {
+      if (effectFn?.options?.scheduler)
+        effectFn.options.scheduler(effectFn)
+      else
+        effectFn()
+    })
+  }
 }
 
 function computed(getter: Function) {
-    // value 用来缓存上一次计算的值
-    let value: any
-    // dirty 标志，用来标识是否需要重新计算值
-    let dirty = true
-    // 把 getter 作为副作用函数，创建一个 lazy 的 effect
-    const effectFn = effect(getter, {
-        lazy: true,
-        scheduler() {
-            if (!dirty) {
-                dirty = true
-                // 当计算属性依赖的响应式数据变化时，手动调用 trigger 函数触发响应
-                trigger(obj, 'value')
-            }
-        }
-    })
+  // value 用来缓存上一次计算的值
+  let value: any
+  // dirty 标志，用来标识是否需要重新计算值
+  let dirty = true
+  // 把 getter 作为副作用函数，创建一个 lazy 的 effect
+  const effectFn = effect(getter, {
+    lazy: true,
+    scheduler() {
+      if (!dirty) {
+        dirty = true
+        // 当计算属性依赖的响应式数据变化时，手动调用 trigger 函数触发响应
+        trigger(obj, 'value')
+      }
+    },
+  })
 
-    const obj = {   // 当读取 value 时才执行 effectFn  
-        get value() {
-            if (dirty) {
-                value = effectFn()
-                dirty = false
-            }
-            track(obj, 'value')
-            return value
-        }
-    }
+  const obj = { // 当读取 value 时才执行 effectFn
+    get value() {
+      if (dirty) {
+        value = effectFn()
+        dirty = false
+      }
+      track(obj, 'value')
+      return value
+    },
+  }
 
-    return obj
-
+  return obj
 }
 
 function traverse(value: any, seen = new Set()) {
-    // 如果要读取的数据是原始值，或者已经被读取过了，那么什么都不做
-    if (typeof value !== 'object' || value === null || seen.has(value)) return
-    // 将数据添加到 seen 中，代表遍历地读取过了，避免循环引用引起的死循环
-    seen.add(value)
-    // 暂时不考虑数组等其他结构
-    // 假设 value 就是一个对象，使用 for...in 读取对象的每一个值，并递归地调用 traverse 进行处理
-    for (const k in value) {
-        traverse(value[k], seen)
-    }
+  // 如果要读取的数据是原始值，或者已经被读取过了，那么什么都不做
+  if (typeof value !== 'object' || value === null || seen.has(value))
+    return
+  // 将数据添加到 seen 中，代表遍历地读取过了，避免循环引用引起的死循环
+  seen.add(value)
+  // 暂时不考虑数组等其他结构
+  // 假设 value 就是一个对象，使用 for...in 读取对象的每一个值，并递归地调用 traverse 进行处理
+  for (const k in value)
+    traverse(value[k], seen)
 
-    return value
+  return value
 }
 
 function watch(source: any, cb: Function, options: Options) {
-    let getter: Function
-    if (typeof source === 'function') {
-        getter = source
-    } else {
-        getter = () => traverse(source)
-    }
+  let getter: Function
+  if (typeof source === 'function')
+    getter = source
+  else
+    getter = () => traverse(source)
 
-    let oldValue: any, newValue: any
+  let oldValue: any, newValue: any
 
-    // cleanup 用来存储用户注册的过期回调
-    let cleanup: Function
-    // 定义 onInvalidate 函数
-    function onInvalidate(fn: Function) {
-        // 将过期回调存储到 cleanup 中
-        cleanup = fn
-    }
+  // cleanup 用来存储用户注册的过期回调
+  let cleanup: Function
+  // 定义 onInvalidate 函数
+  function onInvalidate(fn: Function) {
+    // 将过期回调存储到 cleanup 中
+    cleanup = fn
+  }
 
-    const job = () => {
-        newValue = effectFn()
-        // 在调用回调函数 cb 之前，先调用过期回调
-        if (cleanup) {
-            cleanup()
+  const job = () => {
+    newValue = effectFn()
+    // 在调用回调函数 cb 之前，先调用过期回调
+    if (cleanup)
+      cleanup()
+
+    // 将 onInvalidate 作为回调函数的第三个参数，以便用户使用
+    cb(newValue, oldValue, onInvalidate)
+    oldValue = newValue
+  }
+
+  const effectFn = effect(
+    // 执行 getter
+    () => getter(),
+    {
+      lazy: true,
+      scheduler: () => {
+        if (options.flush === 'post') {
+          const p = Promise.resolve()
+          p.then(job)
         }
-        // 将 onInvalidate 作为回调函数的第三个参数，以便用户使用
-        cb(newValue, oldValue, onInvalidate)
-        oldValue = newValue
-    }
-
-    const effectFn = effect(
-        // 执行 getter
-        () => getter(),
-        {
-            lazy: true,
-            scheduler: () => {
-                if (options.flush === 'post') {
-                    const p = Promise.resolve()
-                    p.then(job)
-                } else {
-                    job()
-                }
-            }
+        else {
+          job()
         }
-    )
+      },
+    },
+  )
 
-    if (options.immediate) {
-        job()
-    } else {
-        oldValue = effectFn()
-    }
+  if (options.immediate)
+    job()
+  else
+    oldValue = effectFn()
 }
 
-
 const obj = {
-    foo: 1,
-    get bar() {
-        // 现在这里的 this 为代理对象 p
-        return this.foo
-    }
+  foo: 1,
+  get bar() {
+    // 现在这里的 this 为代理对象 p
+    return this.foo
+  },
 }
 const ITERATE_KEY = Symbol()
 
 // 代理对象
 const p = new Proxy(obj, {
-    // 拦截读取操作，接收第三个参数 receiver
-    get(target, key, receiver) {
-        track(target, key)
-        // 使用 Reflect.get 返回读取到的属性值
-        return Reflect.get(target, key, receiver)
-    },
-    // 拦截设置操作
-    set(target, key, newVal, receiver) {
-        // 如果属性不存在，则说明是在添加新属性，否则是设置已有属性
-        const type = Object.prototype.hasOwnProperty.call(target, key) ? 'SET' : 'ADD'
-        // 设置属性值
-        const res = Reflect.set(target, key, newVal, receiver);
-        // 把副作用函数从桶里取出并执行
-        trigger(target, key, type)
+  // 拦截读取操作，接收第三个参数 receiver
+  get(target, key, receiver) {
+    track(target, key)
+    // 使用 Reflect.get 返回读取到的属性值
+    return Reflect.get(target, key, receiver)
+  },
+  // 拦截设置操作
+  set(target, key, newVal, receiver) {
+    // 如果属性不存在，则说明是在添加新属性，否则是设置已有属性
+    const type = Object.prototype.hasOwnProperty.call(target, key) ? 'SET' : 'ADD'
+    // 设置属性值
+    const res = Reflect.set(target, key, newVal, receiver)
+    // 把副作用函数从桶里取出并执行
+    trigger(target, key, type)
 
-        return res
-    },
-    // 拦截 delete 操作
-    deleteProperty(target, key) {
-        // 删除属性
-        const res = Reflect.deleteProperty(target, key)
-        // 触发删除操作
-        trigger(target, key, 'DELETE')
-        return res
-    },
+    return res
+  },
+  // 拦截 delete 操作
+  deleteProperty(target, key) {
+    // 删除属性
+    const res = Reflect.deleteProperty(target, key)
+    // 触发删除操作
+    trigger(target, key, 'DELETE')
+    return res
+  },
 })
 
 effect(() => {
-    // obj 是原始数据，不是代理对象，这样的访问不能够建立响应联系
-    for (const key in p) {
-        console.log(key)
-    }
+  // obj 是原始数据，不是代理对象，这样的访问不能够建立响应联系
+  for (const key in p)
+    console.log(key)
 })
