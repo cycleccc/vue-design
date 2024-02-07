@@ -21,6 +21,11 @@ interface ArrayInstrumentations {
     [propName: string]: (searchElement: any, fromIndex?: number) => number | boolean
 }
 
+interface target {
+    [key: string]: any
+    [key: symbol]: any
+}
+
 const ITERATE_KEY = Symbol()
 
 // 操作类型
@@ -293,12 +298,16 @@ let shouldTrack = true;
 function createReactive(obj: object, isShallow = false, isReadonly = false): object {
     return new Proxy(obj, {
         // 拦截读取操作，接收第三个参数 receiver
-        get(target, key, receiver) {
+        get(target: target, key, receiver) {
             console.log(`拦截到了get操作，target=${ JSON.stringify(target) },key=${ String(key) }`, receiver)
             // 代理对象可以通过 raw 属性访问原始数据
             if (key === 'raw')
                 return target
-
+            if (key === 'size') {
+                // 如果读取的是 size 属性
+                // 通过指定第三个参数 receiver 为原始对象 target 从而修复问题
+                return Reflect.get(target, key, target)
+            }
             // 如果操作的目标对象是数组，并且 key 存在于 arrayInstrumentations 上，
             // 那么返回定义在arryInstrumentation 上的值。
 
@@ -308,6 +317,9 @@ function createReactive(obj: object, isShallow = false, isReadonly = false): obj
             // 非只读和key不为symbol的时候才需要建立响应联系
             if (!isReadonly && typeof key !== 'symbol')
                 track(target, key)
+
+            if (key === 'delete')
+                return target[key].bind(target)
 
             // 使用 Reflect.get 返回读取到的属性值
             const res = Reflect.get(target, key, receiver)
@@ -327,12 +339,12 @@ function createReactive(obj: object, isShallow = false, isReadonly = false): obj
                 return true
             }
 
-            const oldVal = target[key]
-            console.log(`拦截到了set操作，target=${ JSON.stringify(target) },key=${ String(key) },newVal=${ newVal },oldVal=${ oldVal }`)
-            // 如果属性不存在，则说明是在添加新属性，否则是设置已有属性
-            const type = Array.isArray(target) ? Number(key) < target.length ? TriggerKey.SET : TriggerKey.ADD : Object.prototype.hasOwnProperty.call(target, key) ? TriggerKey.SET : TriggerKey.ADD
-            // 设置属性值
-            const res = Reflect.set(target, key, newVal, receiver)
+          const oldVal = target[key]
+          console.log(`拦截到了set操作，target=${ JSON.stringify(target) },key=${ String(key) },newVal=${ newVal },oldVal=${ oldVal }`)
+          // 如果属性不存在，则说明是在添加新属性，否则是设置已有属性
+          const type = Array.isArray(target) ? Number(key) < target.length ? TriggerKey.SET : TriggerKey.ADD : Object.prototype.hasOwnProperty.call(target, key) ? TriggerKey.SET : TriggerKey.ADD
+          // 设置属性值
+          const res = Reflect.set(target, key, newVal, receiver)
 
             // 新旧值不相等时且receiver是target的代理对象时才触发更新
             if (!Object.is(newVal, oldVal) && (target === receiver.raw)) {
@@ -404,21 +416,38 @@ function shallowReadonly<T extends object>(obj: T) {
 
 // 5.8.1 如何代理 set和map
 // 普通对象的读取和设置操作
-const obj = { foo: 1 }
-obj.foo // 读取属性
-obj.foo = 2 // 设置属性
+// const obj = { foo: 1 }
+// obj.foo // 读取属性
+// obj.foo = 2 // 设置属性
 
 // 用 get/set 方法操作 Map 数据
-const map = new Map()
-map.set('key', 1) // 设置数据
-map.get('key') // 读取数据
+// const map = new Map()
+// map.set('key', 1) // 设置数据
+// map.get('key') // 读取数据
 
-const proxy = reactive(new Map([['key', 1]]));
+// const proxy = reactive(new Map([['key', 1]]))
 
-console.log(proxy);
+// console.log(proxy)
 
+// effect(() => {
+//     console.log(proxy.get('key'))
+// })
+
+// proxy.set('key', 2)
+
+// 实现代理map
+const s = new Set([1, 2, 3])
+const p = reactive(s)
+console.log(s.size)
+p.delete(1)
+// 使用数组进行兼容测试
+const arr = reactive([])
+// 第一个副作用函数
 effect(() => {
-    console.log(proxy.get('key'));
+    arr.push(1)
 })
 
-proxy.set('key', 2)
+// 第二个副作用函数
+effect(() => {
+    arr.push(1)
+})
