@@ -242,6 +242,20 @@ let shouldTrack = true;
         return res;
     };
 });
+// 定义一个对象，将自定义的 add 方法定义到该对象下
+const mutableInstrumentations = {
+    add(key) {
+        // this 仍然指向的是代理对象，通过 raw 属性获取原始数据对象
+        const target = Reflect.get(this, 'raw');
+        // 通过原始数据对象执行 add 方法添加具体的值，
+        // 注意，这里不再需要 .bind 了，因为是直接通过 target 调用并执行的
+        const res = target.add(key);
+        // 调用 trigger 函数触发响应，并指定操作类型为 ADD
+        trigger(target, key, TriggerKey.ADD);
+        // 返回操作结果
+        return res;
+    }
+};
 // 代理对象工厂函数
 function createReactive(obj, isShallow = false, isReadonly = false) {
     return new Proxy(obj, {
@@ -254,7 +268,11 @@ function createReactive(obj, isShallow = false, isReadonly = false) {
             if (key === 'size') {
                 // 如果读取的是 size 属性
                 // 通过指定第三个参数 receiver 为原始对象 target 从而修复问题
+                track(target, ITERATE_KEY);
                 return Reflect.get(target, key, target);
+            }
+            if (key === 'add') {
+                return mutableInstrumentations[key];
             }
             // 如果操作的目标对象是数组，并且 key 存在于 arrayInstrumentations 上，
             // 那么返回定义在arryInstrumentation 上的值。
@@ -299,8 +317,7 @@ function createReactive(obj, isShallow = false, isReadonly = false) {
             console.log(`拦截到了in操作，target=${JSON.stringify(target)},key=${String(key)}`);
             track(target, key);
             return Reflect.has(target, key);
-        },
-        // 拦截 for...in 操作
+        }, // 拦截 for...in 操作
         ownKeys(target) {
             // 使用ITERATE_KEY 代替 key，forin迭代操作针对对象，使用symbol作为唯一标识
             // 如果操作目标 target 是数组，则使用 length 属性作为 key 并建立响应联系
@@ -349,25 +366,17 @@ function shallowReadonly(obj) {
     return createReactive(obj, true, true);
 }
 // 5.8.1 如何代理 set和map
-// 普通对象的读取和设置操作
-// const obj = { foo: 1 }
-// obj.foo // 读取属性
-// obj.foo = 2 // 设置属性
-// 用 get/set 方法操作 Map 数据
-// const map = new Map()
-// map.set('key', 1) // 设置数据
-// map.get('key') // 读取数据
-// const proxy = reactive(new Map([['key', 1]]))
-// console.log(proxy)
-// effect(() => {
-//     console.log(proxy.get('key'))
-// })
-// proxy.set('key', 2)
 // 实现代理map
-const s = new Set([1, 2, 3]);
-const p = reactive(s);
-console.log(s.size);
-p.delete(1);
+// const s = new Set([1, 2, 3])
+// const p = reactive(s)
+// console.log(s.size)
+// p.delete(1)
+// 5.8.2 建立响应建立
+const p = reactive(new Set([1, 2, 3]));
+effect(() => {
+    console.log(p.size);
+});
+p.add(1);
 // 使用数组进行兼容测试
 const arr = reactive([]);
 // 第一个副作用函数
