@@ -1,23 +1,13 @@
 {
-    "scripts": {
-        "precommit": "tsc",
-        "build": "tsc",
-        "prepare": "husky install"
-    },
-    "devDependencies": {
-        "husky": "^8.0.3",
-        "lint-staged": "^15.2.0",
-        "typescript": "^5.3.3"
-    },
-    "husky": {
-        "hooks": {
-            "pre-commit": "lint-staged"
-        }
-    },
-    "lint-staged": {
-        "*.{js,jsx,ts,tsx}": [
-            "tsc",
-            "git add"
-        ]
-    }
+  "type": "module",
+  "scripts": {
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
+  },
+  "devDependencies": {
+    "@antfu/eslint-config": "^2.6.4",
+    "eslint": "^8.56.0",
+    "lint-staged": "^15.2.0",
+    "typescript": "^5.3.3"
+  }
 }
