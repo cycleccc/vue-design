@@ -296,15 +296,28 @@ let shouldTrack = true;
 
 // 定义一个对象，将自定义的 add 方法定义到该对象下
 const mutableInstrumentations = {
-    add(key: any) {
+    add(key: string | symbol) {
         // this 仍然指向的是代理对象，通过 raw 属性获取原始数据对象
-        const target: target = Reflect.get(this, 'raw')
+        const target = Reflect.get(this, 'raw')
         // 通过原始数据对象执行 add 方法添加具体的值，
         // 注意，这里不再需要 .bind 了，因为是直接通过 target 调用并执行的
+        const hadKey = target.has(key)
         const res = target.add(key)
-        // 调用 trigger 函数触发响应，并指定操作类型为 ADD
-        trigger(target, key, TriggerKey.ADD)
-        // 返回操作结果
+        if (!hadKey) {
+            // 调用 trigger 函数触发响应，并指定操作类型为 ADD
+            trigger(target, key, TriggerKey.ADD)
+            // 返回操作结果
+        }
+        return res
+    },
+    delete(key: string | symbol) {
+        const target = Reflect.get(this, 'raw')
+        const hadKey = target.has(key)
+        const res = target.delete(key)
+        // 当要删除的元素确实存在时，才触发响应
+        if (hadKey) {
+            trigger(target, key, TriggerKey.DELETE)
+        }
         return res
     }
 }
@@ -324,7 +337,7 @@ function createReactive(obj: object, isShallow = false, isReadonly = false): obj
                 track(target, ITERATE_KEY)
                 return Reflect.get(target, key, target)
             }
-            if (key === 'add') {
+            if (key === 'add' || key === 'delete') {
                 return mutableInstrumentations[key]
             }
             // 如果操作的目标对象是数组，并且 key 存在于 arrayInstrumentations 上，

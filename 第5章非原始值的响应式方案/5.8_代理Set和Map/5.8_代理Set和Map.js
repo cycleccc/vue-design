@@ -249,10 +249,23 @@ const mutableInstrumentations = {
         const target = Reflect.get(this, 'raw');
         // 通过原始数据对象执行 add 方法添加具体的值，
         // 注意，这里不再需要 .bind 了，因为是直接通过 target 调用并执行的
+        const hadKey = target.has(key);
         const res = target.add(key);
-        // 调用 trigger 函数触发响应，并指定操作类型为 ADD
-        trigger(target, key, TriggerKey.ADD);
-        // 返回操作结果
+        if (!hadKey) {
+            // 调用 trigger 函数触发响应，并指定操作类型为 ADD
+            trigger(target, key, TriggerKey.ADD);
+            // 返回操作结果
+        }
+        return res;
+    },
+    delete(key) {
+        const target = Reflect.get(this, 'raw');
+        const hadKey = target.has(key);
+        const res = target.delete(key);
+        // 当要删除的元素确实存在时，才触发响应
+        if (hadKey) {
+            trigger(target, key, TriggerKey.DELETE);
+        }
         return res;
     }
 };
@@ -271,7 +284,7 @@ function createReactive(obj, isShallow = false, isReadonly = false) {
                 track(target, ITERATE_KEY);
                 return Reflect.get(target, key, target);
             }
-            if (key === 'add') {
+            if (key === 'add' || key === 'delete') {
                 return mutableInstrumentations[key];
             }
             // 如果操作的目标对象是数组，并且 key 存在于 arrayInstrumentations 上，
