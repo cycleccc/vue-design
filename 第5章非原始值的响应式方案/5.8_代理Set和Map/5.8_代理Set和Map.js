@@ -251,6 +251,7 @@ const mutableInstrumentations = {
         // 注意，这里不再需要 .bind 了，因为是直接通过 target 调用并执行的
         const hadKey = target.has(key);
         const res = target.add(key);
+        console.log(`拦截到了set_add操作，target=${JSON.stringify(target)},key=${String(key)}`);
         if (!hadKey) {
             // 调用 trigger 函数触发响应，并指定操作类型为 ADD
             trigger(target, key, TriggerKey.ADD);
@@ -263,10 +264,43 @@ const mutableInstrumentations = {
         const hadKey = target.has(key);
         const res = target.delete(key);
         // 当要删除的元素确实存在时，才触发响应
+        console.log(`拦截到了set_delete操作，target=${JSON.stringify(target)},key=${String(key)}`);
         if (hadKey) {
             trigger(target, key, TriggerKey.DELETE);
         }
         return res;
+    },
+    get(key) {
+        // 获取原始对象
+        const target = Reflect.get(this, 'raw');
+        // 判断读取的 key 是否存在
+        const had = target.has(key);
+        // 追踪依赖，建立响应联系
+        console.log(`拦截到了map_get操作，target=${JSON.stringify(target)},key=${String(key)}`);
+        track(target, key);
+        if (had) {
+            const res = target.get(key);
+            return typeof res === 'object' ? reactive(res) : res;
+        }
+    },
+    set(key, value) {
+        const target = Reflect.get(this, 'raw');
+        const had = target.has(key);
+        // 获取旧值
+        const oldValue = target.get(key);
+        // 获取原始数据，由于 value 本身可能已经是原始数据，所以此时 value.raw 不存在，则直接使用 value
+        const rawValue = value.raw || value;
+        // 设置新值
+        target.set(key, rawValue);
+        // 如果不存在，则说明是 ADD 类型的操作，意味着新增
+        console.log(`拦截到了map_set操作，target=${JSON.stringify(target)},key=${String(key)},oldValue=${oldValue},newValue=${value}`);
+        if (!had) {
+            trigger(target, key, TriggerKey.ADD);
+        }
+        else if (!Object.is(value, oldValue)) {
+            // 如果不存在，并且值变了，则是 SET 类型的操作，意味着修改
+            trigger(target, key, TriggerKey.SET, value);
+        }
     }
 };
 // 代理对象工厂函数
@@ -284,7 +318,7 @@ function createReactive(obj, isShallow = false, isReadonly = false) {
                 track(target, ITERATE_KEY);
                 return Reflect.get(target, key, target);
             }
-            if (key === 'add' || key === 'delete') {
+            if (Object.keys(mutableInstrumentations).includes(key)) {
                 return mutableInstrumentations[key];
             }
             // 如果操作的目标对象是数组，并且 key 存在于 arrayInstrumentations 上，
@@ -385,18 +419,38 @@ function shallowReadonly(obj) {
 // console.log(s.size)
 // p.delete(1)
 // 5.8.2 建立响应建立
-const p = reactive(new Set([1, 2, 3]));
+// const p = reactive(new Set([1, 2, 3]))
+// effect(() => {
+//     console.log(p.size)
+// })
+// p.add(1)
+// 5.8.3 避免污染原始数据
+// const p = reactive(new Map([['key', 1]]))
+// effect(() => {
+//     console.log('触发了get_effect', p.get('key'))
+// })
+// p.set('key', 2)
+// 原始 Map 对象 m
+const m = new Map();
+// p1 是 m 的代理对象
+const p1 = reactive(m);
+// p2 是另外一个代理对象
+const p2 = reactive(new Map());
+// 为 p1 设置一个键值对，值是代理对象 p2
+p1.set('p2', p2);
 effect(() => {
-    console.log(p.size);
+    // 注意，这里我们通过原始数据 m 访问 p2
+    console.log(m.get('p2').size);
 });
-p.add(1);
-// 使用数组进行兼容测试
-const arr = reactive([]);
-// 第一个副作用函数
-effect(() => {
-    arr.push(1);
-});
-// 第二个副作用函数
-effect(() => {
-    arr.push(1);
-});
+//  通过原始数据 m  为 p2 设置一个键值对
+m.get('p2').set('foo', 1);
+// // 使用数组进行兼容测试
+// const arr = reactive([])
+// // 第一个副作用函数
+// effect(() => {
+// arr.push(1)
+// })
+// // 第二个副作用函数
+// effect(() => {
+// arr.push(1)
+// })
