@@ -69,7 +69,7 @@ function trigger(target, key, type, newVal) {
         });
     }
     // 当操作类型为 ADD 或 DELETE 时，需要触发与 ITERATE_KEY 相关联的副作用函数重新执行
-    if (type === TriggerKey.ADD || type === TriggerKey.DELETE) {
+    if (type === TriggerKey.ADD || type === TriggerKey.DELETE || (type === TriggerKey.SET && Object.prototype.toString.call(target) === '[object Map]')) {
         const iterateEffects = depsMap.get(ITERATE_KEY);
         iterateEffects && iterateEffects.forEach((effectFn) => {
             if (effectFn !== activeEffect)
@@ -301,6 +301,20 @@ const mutableInstrumentations = {
             // 如果不存在，并且值变了，则是 SET 类型的操作，意味着修改
             trigger(target, key, TriggerKey.SET, value);
         }
+    },
+    forEach(callback, thisArg) {
+        // 取得原始数据对象
+        // wrap 函数用来把可代理的值转换为响应式数据
+        const wrap = (val) => typeof val === 'object' ? reactive(val) : val;
+        const target = Reflect.get(this, 'raw');
+        console.log(`拦截到了map_forEach操作，target=${JSON.stringify(target)},key=${String(ITERATE_KEY)}`);
+        // 与 INERATE_KEY 建立响应联系
+        track(target, ITERATE_KEY);
+        // 通过原始数据对象调用 forEach 方法，并把 calback 传递过去
+        target.forEach((value, key) => {
+            // 通过 .call 调用 callback，并传递 thisArg
+            callback.call(thisArg, wrap(value), wrap(key), this);
+        });
     }
 };
 // 代理对象工厂函数
@@ -430,20 +444,50 @@ function shallowReadonly(obj) {
 //     console.log('触发了get_effect', p.get('key'))
 // })
 // p.set('key', 2)
-// 原始 Map 对象 m
-const m = new Map();
-// p1 是 m 的代理对象
-const p1 = reactive(m);
-// p2 是另外一个代理对象
-const p2 = reactive(new Map());
-// 为 p1 设置一个键值对，值是代理对象 p2
-p1.set('p2', p2);
+// // 原始 Map 对象 m
+// const m = new Map()
+// // p1 是 m 的代理对象
+// const p1 = reactive(m)
+// // p2 是另外一个代理对象
+// const p2 = reactive(new Map())
+// // 为 p1 设置一个键值对，值是代理对象 p2
+// p1.set('p2', p2)
+// effect(() => {
+//     // 注意，这里我们通过原始数据 m 访问 p2
+//     console.log(m.get('p2').size)
+// })
+// //  通过原始数据 m  为 p2 设置一个键值对
+// m.get('p2').set('foo', 1)
+// 5.8.4 处理forEach
+// const p = reactive(new Map([
+//     [{ key: 1 }, { value: 1 }]
+// ]))
+// effect(() => {
+//     p.forEach((value: any, key: any) => {
+//         console.log(value) // { value: 1 }
+//         console.log(key) // { key: 1 }
+//     })
+// })
+// p.set({ key: 2 }, { value: 2 })
+// const key = { key: 1 }
+// const value = new Set([1, 2, 3])
+// const p = reactive(new Map([
+//     [key, value]
+// ]))
+// effect(() => p.forEach((value: any, key: any) => {
+//     console.log(value.size)
+// }))
+// p.get(key).delete(1)
+const p = reactive(new Map([
+    ['key', 1]
+]));
 effect(() => {
-    // 注意，这里我们通过原始数据 m 访问 p2
-    console.log(m.get('p2').size);
+    p.forEach(function (value, key) {
+        // forEach 循环不仅关心集合的键，还关心集合的值
+        console.log("触发了set_forEach", value); // 1
+    });
 });
-//  通过原始数据 m  为 p2 设置一个键值对
-m.get('p2').set('foo', 1);
+p.set('key', 2); // 即使操作类型是 SET，也应该触发响应
 // // 使用数组进行兼容测试
 // const arr = reactive([])
 // // 第一个副作用函数
