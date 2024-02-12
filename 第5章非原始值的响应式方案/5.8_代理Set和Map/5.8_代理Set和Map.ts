@@ -295,6 +295,7 @@ let shouldTrack = true;
 })
 interface MutableInstrumentations {
     [key: string]: any;
+    [key: symbol]: any;
 }
 // 定义一个对象，将自定义的 add 方法定义到该对象下
 const mutableInstrumentations: MutableInstrumentations = {
@@ -365,9 +366,29 @@ const mutableInstrumentations: MutableInstrumentations = {
         track(target, ITERATE_KEY)
         // 通过原始数据对象调用 forEach 方法，并把 calback 传递过去
         target.forEach((value: any, key: any) => {
-            // 通过 .call 调用 callback，并传递 thisArg
+            // 通过 .call 调用 callback，并传递 thisArg，对key和value都要进行监测封装，
+            //因为key和value变化都会有相应的effct
             callback.call(thisArg, wrap(value), wrap(key), this)
         })
+    },
+    [Symbol.iterator]() {
+        // 获取原始数据对象 target
+        const target = Reflect.get(this, 'raw')
+        // 获取原始迭代器方法
+        const itr = target[Symbol.iterator]()
+        console.log(`拦截到了map_for...of操作，target=${ JSON.stringify(target) },key=${ String(itr) }`)
+        const wrap = (val: any) => typeof val === 'object' && val !== null ? reactive(val) : val
+        // 返回自定义的迭代器
+        return {
+            next() {
+                // 调用原始迭代器的 next 方法获取 value 和 done
+                const { value, done } = itr.next()
+                return {
+                    // 如果value 不是 undefined，则对其进行包裹
+                    value: value ? [wrap(value[0]), wrap(value[1])] : value, done
+                }
+            }
+        } 
     }
 }
 
@@ -376,18 +397,23 @@ function createReactive(obj: object, isShallow = false, isReadonly = false): obj
     return new Proxy(obj, {
         // 拦截读取操作，接收第三个参数 receiver
         get(target: target, key, receiver) {
+            console.log("key", key, typeof key)
             console.log(`拦截到了get操作，target=${ JSON.stringify(target) },key=${ String(key) }`, receiver)
             // 代理对象可以通过 raw 属性访问原始数据
-            if (key === 'raw')
+            if (key === 'raw') {
                 return target
+            }
             if (key === 'size') {
                 // 如果读取的是 size 属性
                 // 通过指定第三个参数 receiver 为原始对象 target 从而修复问题
                 track(target, ITERATE_KEY)
                 return Reflect.get(target, key, target)
             }
+            if (!isReadonly && typeof key !== 'symbol') {
+                track(target, key)
+            }
             if (Object.keys(mutableInstrumentations).includes(key as string)) {
-                return mutableInstrumentations[key as string]
+                return mutableInstrumentations[key]
             }
             // 如果操作的目标对象是数组，并且 key 存在于 arrayInstrumentations 上，
             // 那么返回定义在arryInstrumentation 上的值。
@@ -396,11 +422,6 @@ function createReactive(obj: object, isShallow = false, isReadonly = false): obj
                 return Reflect.get(arrayInstrumentations, key, receiver)
 
             // 非只读和key不为symbol的时候才需要建立响应联系
-            if (!isReadonly && typeof key !== 'symbol')
-                track(target, key)
-
-            if (key === 'delete')
-                return target[key].bind(target)
 
             // 使用 Reflect.get 返回读取到的属性值
             const res = Reflect.get(target, key, receiver)
@@ -557,18 +578,37 @@ function shallowReadonly<T extends object>(obj: T) {
 // }))
 
 // p.get(key).delete(1)
-const p = reactive(new Map([
-    ['key', 1]
-]))
+// const p = reactive(new Map([
+//     ['key', 1]
+// ]))
 
+// effect(() => {
+//     p.forEach(function (value: any, key: any) {
+//         // forEach 循环不仅关心集合的键，还关心集合的值
+//         console.log("触发了set_forEach", value) // 1
+//     })
+// })
+
+// p.set('key', 2) // 即使操作类型是 SET，也应该触发响应
+
+
+// 5.8.5 迭代器方法
+const p = reactive(new Map([
+    ['key1', 'value1'],
+    ['key2', 'value2'],
+]))
 effect(() => {
-    p.forEach(function (value: any, key: any) {
-        // forEach 循环不仅关心集合的键，还关心集合的值
-        console.log("触发了set_forEach", value) // 1
-    })
+    for (const key of p.entries()) {
+        // console.log(key, value)
+
+        console.log(key)
+    }
 })
 
-p.set('key', 2) // 即使操作类型是 SET，也应该触发响应
+p.set('key3', 'value3')
+
+// bug-todo: Uncaught TypeError: Method Map.prototype.entries called on incompatible receiver #<Map>
+
 // // 使用数组进行兼容测试
 // const arr = reactive([])
 // // 第一个副作用函数
