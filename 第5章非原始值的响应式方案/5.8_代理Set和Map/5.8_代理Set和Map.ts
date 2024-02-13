@@ -412,7 +412,10 @@ function createReactive(obj: object, isShallow = false, isReadonly = false): obj
             if (!isReadonly && typeof key !== 'symbol') {
                 track(target, key)
             }
-            if (Object.keys(mutableInstrumentations).includes(key as string)) {
+            if (key === Symbol.iterator) {
+            }
+            // 原先使用Object.keys，但是Object.keys不能输出symbol，所以使用Reflect.ownKeys来输出Symbol  
+            if (Reflect.ownKeys(mutableInstrumentations).includes(key as string)) {
                 return mutableInstrumentations[key]
             }
             // 如果操作的目标对象是数组，并且 key 存在于 arrayInstrumentations 上，
@@ -432,6 +435,7 @@ function createReactive(obj: object, isShallow = false, isReadonly = false): obj
                 // 调用 reactive 将结果包装成响应式数据并返回,如果数据为只读，则调用 readonly 对值进行包装
                 return isReadonly ? readonly(res) : reactive(res)
             }
+            console.log('439', res);
             return res
         },
         // 拦截设置操作
@@ -598,10 +602,8 @@ const p = reactive(new Map([
     ['key2', 'value2'],
 ]))
 effect(() => {
-    for (const key of p.entries()) {
-        // console.log(key, value)
-
-        console.log(key)
+    for (const [key, value] of p) {
+        console.log(key, value)
     }
 })
 

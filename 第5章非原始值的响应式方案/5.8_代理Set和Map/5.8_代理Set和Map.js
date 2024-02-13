@@ -357,9 +357,14 @@ function createReactive(obj, isShallow = false, isReadonly = false) {
             if (!isReadonly && typeof key !== 'symbol') {
                 track(target, key);
             }
-            if (Object.keys(mutableInstrumentations).includes(key)) {
+            console.log('415');
+            if (key === Symbol.iterator) {
+            }
+            if (Reflect.ownKeys(mutableInstrumentations).includes(key)) {
+                console.log('416');
                 return mutableInstrumentations[key];
             }
+            console.log('420');
             // 如果操作的目标对象是数组，并且 key 存在于 arrayInstrumentations 上，
             // 那么返回定义在arryInstrumentation 上的值。
             if (Array.isArray(target) && arrayInstrumentations.hasOwnProperty(key))
@@ -373,6 +378,7 @@ function createReactive(obj, isShallow = false, isReadonly = false) {
                 // 调用 reactive 将结果包装成响应式数据并返回,如果数据为只读，则调用 readonly 对值进行包装
                 return isReadonly ? readonly(res) : reactive(res);
             }
+            console.log('439', res);
             return res;
         },
         // 拦截设置操作
@@ -515,9 +521,8 @@ const p = reactive(new Map([
     ['key2', 'value2'],
 ]));
 effect(() => {
-    for (const key of p.entries()) {
-        // console.log(key, value)
-        console.log(key);
+    for (const [key, value] of p) {
+        console.log(key, value);
     }
 });
 p.set('key3', 'value3');
