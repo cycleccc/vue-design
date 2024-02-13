@@ -357,14 +357,12 @@ function createReactive(obj, isShallow = false, isReadonly = false) {
             if (!isReadonly && typeof key !== 'symbol') {
                 track(target, key);
             }
-            console.log('415');
             if (key === Symbol.iterator) {
             }
+            // 原先使用Object.keys，但是Object.keys不能输出symbol，所以使用Reflect.ownKeys来输出Symbol  
             if (Reflect.ownKeys(mutableInstrumentations).includes(key)) {
-                console.log('416');
                 return mutableInstrumentations[key];
             }
-            console.log('420');
             // 如果操作的目标对象是数组，并且 key 存在于 arrayInstrumentations 上，
             // 那么返回定义在arryInstrumentation 上的值。
             if (Array.isArray(target) && arrayInstrumentations.hasOwnProperty(key))
