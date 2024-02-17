@@ -635,7 +635,7 @@ const p = reactive(new Map([
 ]))
 
 effect(() => {
-    for (const value of p) {
+    for (const value of p.keys()) {
         console.log('触发了values拦截', value);
     }
 })
