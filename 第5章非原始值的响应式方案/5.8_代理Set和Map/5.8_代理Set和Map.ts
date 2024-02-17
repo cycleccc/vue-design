@@ -27,6 +27,7 @@ interface target {
 }
 
 const ITERATE_KEY = Symbol()
+const MAP_KEY_ITERATE_KEY = Symbol()
 
 // 操作类型
 enum TriggerKey {
@@ -75,12 +76,9 @@ function cleanup(effectFn: EffectFn) {
 
 // 在 set 拦截函数内调用 trigger 函数触发变化
 function trigger(target: Object, key: string | symbol, type?: TriggerKey, newVal?: any): void {
-    console.log(`触发了trigger,key=${ key.toString() },type=${ type },newVal=${ newVal }`)
-
+    console.log(`触发了trigger,target=${ target },key=${ key.toString() },type=${ type },newVal=${ newVal }`)
     const depsMap = bucket.get(target)
-    if (!depsMap)
-        return
-
+    if (!depsMap) return
     const effects = depsMap.get(key)
     const effectsToRun: Set<EffectFn> = new Set()
     effects && effects.forEach((effectFn: EffectFn) => {
@@ -98,16 +96,22 @@ function trigger(target: Object, key: string | symbol, type?: TriggerKey, newVal
     }
     // 当操作类型为 ADD 或 DELETE 时，需要触发与 ITERATE_KEY 相关联的副作用函数重新执行
     if (type === TriggerKey.ADD || type === TriggerKey.DELETE || (type === TriggerKey.SET && Object.prototype.toString.call(target) === '[object Map]')) {
+        // 则取出那些与 MAP_KEY_ITERATE_KEY 相关联的副作用函数并执行
         const iterateEffects = depsMap.get(ITERATE_KEY)
         iterateEffects && iterateEffects.forEach((effectFn: EffectFn) => {
             if (effectFn !== activeEffect)
                 effectsToRun.add(effectFn)
         })
     }
-
+    if ((type === TriggerKey.ADD || type === TriggerKey.DELETE) && Object.prototype.toString.call(target) === '[object Map]') {
+        // 则取出那些与 MAP_KEY_ITERATE_KEY 相关联的副作用函数并执行
+        const iterateEffects = depsMap.get(MAP_KEY_ITERATE_KEY)
+        iterateEffects && iterateEffects.forEach((effectFn: EffectFn) => {
+            if (effectFn !== activeEffect)
+                effectsToRun.add(effectFn)
+        })
+    }
     if (Array.isArray(target) && key === 'length') {
-        // console.log('depsMap', depsMap);
-
         // 对于索引大于或等于新的 length 值的元素，需要把所有相关联的副作用函数取出并添加到 effectsToRun 中待执行
         depsMap.forEach((effects: EffectFn[], key: any) => {
             if (key >= newVal) {
@@ -132,6 +136,7 @@ function trigger(target: Object, key: string | symbol, type?: TriggerKey, newVal
 
 const bucket = new WeakMap()
 function track(target: Object, key: string | symbol) {
+    console.log(`触发了track追踪，target=${ target },key=${ String(key) }`);
     // 没有 activeEffect且数组方法还没执行完shouldTrack为false时，直接 return
     if (!activeEffect || !shouldTrack)
         return
@@ -297,6 +302,34 @@ interface MutableInstrumentations {
     [key: string]: any;
     [key: symbol]: any;
 }
+function createIteratorMethod(iterateFn: (target: any) => IterableIterator<any>, trackKey: symbol) {
+    return function (this: { raw: any }) {
+        const target = this.raw
+        const itr = iterateFn(target)
+
+        const wrap = (val: any) => typeof val === 'object' ? reactive(val) : val
+
+        track(target, trackKey)
+
+        return {
+            next() {
+                const { value, done } = itr.next()
+                return {
+                    value: value ? wrap(value) : value,
+                    done
+                }
+            },
+            [Symbol.iterator]() {
+                return this
+            }
+        }
+    }
+}
+
+const iterationMethod = createIteratorMethod(function* (target: any) { yield* target }, ITERATE_KEY)
+const keysIterationMethod = createIteratorMethod(function* (target: any) { yield* target.keys() }, MAP_KEY_ITERATE_KEY)
+const valuesIterationMethod = createIteratorMethod(function* (target: any) { yield* target.values() }, ITERATE_KEY)
+
 // 定义一个对象，将自定义的 add 方法定义到该对象下
 const mutableInstrumentations: MutableInstrumentations = {
     add(key: string) {
@@ -371,33 +404,19 @@ const mutableInstrumentations: MutableInstrumentations = {
             callback.call(thisArg, wrap(value), wrap(key), this)
         })
     },
-    [Symbol.iterator]() {
-        // 获取原始数据对象 target
-        const target = Reflect.get(this, 'raw')
-        // 获取原始迭代器方法
-        const itr = target[Symbol.iterator]()
-        console.log(`拦截到了map_for...of操作，target=${ JSON.stringify(target) },key=${ String(itr) }`)
-        const wrap = (val: any) => typeof val === 'object' && val !== null ? reactive(val) : val
-        // 返回自定义的迭代器
-        return {
-            next() {
-                // 调用原始迭代器的 next 方法获取 value 和 done
-                const { value, done } = itr.next()
-                return {
-                    // 如果value 不是 undefined，则对其进行包裹
-                    value: value ? [wrap(value[0]), wrap(value[1])] : value, done
-                }
-            }
-        } 
-    }
+    [Symbol.iterator]: iterationMethod,
+    entries: iterationMethod,
+    keys: keysIterationMethod,
+    values: valuesIterationMethod
 }
+
+
 
 // 代理对象工厂函数
 function createReactive(obj: object, isShallow = false, isReadonly = false): object {
     return new Proxy(obj, {
         // 拦截读取操作，接收第三个参数 receiver
         get(target: target, key, receiver) {
-            console.log("key", key, typeof key)
             console.log(`拦截到了get操作，target=${ JSON.stringify(target) },key=${ String(key) }`, receiver)
             // 代理对象可以通过 raw 属性访问原始数据
             if (key === 'raw') {
@@ -414,7 +433,8 @@ function createReactive(obj: object, isShallow = false, isReadonly = false): obj
             }
             if (key === Symbol.iterator) {
             }
-            // 原先使用Object.keys，但是Object.keys不能输出symbol，所以使用Reflect.ownKeys来输出Symbol  
+            // 原先使用Object.keys，但是Object.keys不能输出symbol，所以使用Reflect.ownKeys来输出Symbol
+
             if (Reflect.ownKeys(mutableInstrumentations).includes(key as string)) {
                 return mutableInstrumentations[key]
             }
@@ -435,7 +455,6 @@ function createReactive(obj: object, isShallow = false, isReadonly = false): obj
                 // 调用 reactive 将结果包装成响应式数据并返回,如果数据为只读，则调用 readonly 对值进行包装
                 return isReadonly ? readonly(res) : reactive(res)
             }
-            console.log('439', res);
             return res
         },
         // 拦截设置操作
@@ -543,7 +562,7 @@ function shallowReadonly<T extends object>(obj: T) {
 // p.set('key', 2)
 
 // // 原始 Map 对象 m
-// const m = new Map()
+// const m = new Map()?
 // // p1 是 m 的代理对象
 // const p1 = reactive(m)
 // // p2 是另外一个代理对象
@@ -597,20 +616,31 @@ function shallowReadonly<T extends object>(obj: T) {
 
 
 // 5.8.5 迭代器方法
+// const p = reactive(new Map([
+//     ['key1', 'value1'],
+//     ['key2', 'value2'],
+// ]))
+// effect(() => {
+//     for (const [key, value] of p) {
+//         console.log(key, value)
+//     }
+// })
+// p.set('key3', 'value3')
+
+
+// 5.8.6 values 与 keys 方法
 const p = reactive(new Map([
     ['key1', 'value1'],
     ['key2', 'value2'],
 ]))
+
 effect(() => {
-    for (const [key, value] of p) {
-        console.log(key, value)
+    for (const value of p) {
+        console.log('触发了values拦截', value);
     }
 })
-
+p.set('key2', 'value3')
 p.set('key3', 'value3')
-
-// bug-todo: Uncaught TypeError: Method Map.prototype.entries called on incompatible receiver #<Map>
-
 // // 使用数组进行兼容测试
 // const arr = reactive([])
 // // 第一个副作用函数
