@@ -69,16 +69,11 @@ function createAppElement() {
     return appDiv;
 }
 const vnode = {
-    type: 'div',
+    type: 'p',
     props: {
-        id: 'foo'
-    },
-    children: [
-        {
-            type: 'p',
-            children: 'hello'
-        }
-    ]
+        // 序列化后的结果
+        class: 'foo bar baz'
+    }
 };
 // 在创建 renderer 时传入配置项
 const renderer = createRenderer({
@@ -93,6 +88,10 @@ const renderer = createRenderer({
     },
     // 将属性设置相关操作封装到 patchProps 函数中，并作为渲染器选项传递
     patchProps(el, key, prevValue, nextValue) {
+        // 如果key为class直接设置className比用setAtribute更快
+        if (key === 'class') {
+            el.className = nextValue || '';
+        }
         if (shouldSetAsProps(el, key, nextValue)) {
             const type = typeof el[key];
             if (type === 'boolean' && nextValue === '') {
