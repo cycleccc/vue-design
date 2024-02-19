@@ -1,8 +1,4 @@
 "use strict";
-const vnode = {
-    type: 'h1',
-    children: 'hello'
-};
 function createRenderer(options) {
     // 通过 options 得到操作 DOM 的 API
     const { createElement, insert, setElementText } = options;
@@ -10,8 +6,23 @@ function createRenderer(options) {
         // 调用 createElement 函数创建元素
         const el = createElement(vnode.type);
         if (typeof vnode.children === 'string') {
-            // 调用 setElementText 设置元素的文本节点
+            // 调用 setElementText  设置元素的文本节点
             setElementText(el, vnode.children);
+        }
+        else if (Array.isArray(vnode.children)) {
+            // 如果  children 是数组，则遍历每一个子节点，并调用 patch 函数挂载它们
+            vnode.children.forEach(child => {
+                patch(null, child, el);
+            });
+        }
+        if (vnode.props) {
+            // 遍历 vnode.props
+            for (const key in vnode.props) {
+                // 调用 setAttribute 将属性设置到元素上
+                el.setAttribute(key, vnode.props[key]);
+                // 直接设置
+                // el[key] =vnode.props[key]
+            }
         }
         // 调用 insert 函数将元素插入到容器内
         insert(el, container);
@@ -52,6 +63,18 @@ function createAppElement() {
     document.body.appendChild(appDiv);
     return appDiv;
 }
+const vnode = {
+    type: 'div',
+    props: {
+        id: 'foo'
+    },
+    children: [
+        {
+            type: 'p',
+            children: 'hello'
+        }
+    ]
+};
 // 在创建 renderer 时传入配置项
 const renderer1 = createRenderer({
     // 用于创建元素
@@ -67,21 +90,6 @@ const renderer1 = createRenderer({
         parent.insertBefore(el, anchor);
     }
 });
-const renderer2 = createRenderer({
-    createElement(tag) {
-        console.log(`创建元素 ${tag}`);
-        return { tag };
-    },
-    setElementText(el, text) {
-        console.log(`设置 ${JSON.stringify(el)} 的文本内容：${text}`);
-        el.textContent = text;
-    },
-    insert(el, parent, anchor) {
-        console.log(`将 ${JSON.stringify(el)} 添加到 ${JSON.stringify(parent)} 下`);
-        parent.children = el;
-    }
-});
 // 本章节代码ts注解不好搞，又是HTMLElement又是object，后面的章节再规范
 const container = { type: 'root' };
 renderer1.render(vnode, document.querySelector('#app') || createAppElement());
-renderer2.render(vnode, container);
