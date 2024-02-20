@@ -168,7 +168,5 @@ console.log(`vnode :${ JSON.stringify(vnode) }`, vnode);
 //     }
 // }
 
-
-// 本章节代码ts注解不好搞，又是HTMLElement又是object，后面的章节再规范
 const container = { type: 'root' }
 renderer.render(vnode, document.querySelector('#app') || createAppElement())
