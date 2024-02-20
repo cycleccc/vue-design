@@ -16,6 +16,38 @@ function shouldSetAsProps(el: HTMLElement, key: string, value: any) {
     // 兜底
     return key in el
 }
+function handleObject(set: Set<string>, obj: { [key: string]: boolean }) {
+    for (const key in obj) {
+        // 如果对象的值为 true，则将键（类名）加入到 set 中
+        if (obj[key]) set.add(key);
+    }
+}
+
+function normalizeClass(classValue: string | { [key: string]: boolean } | Array<string | { [key: string]: boolean }>) {
+    // 如果 classValue 是字符串，则直接返回
+    if (typeof classValue === 'string') return classValue;
+
+    // 创建一个 Set 来存储结果类名
+    let resultClassSet: Set<string> = new Set();
+
+    // 处理数组和对象的情况
+    if (Array.isArray(classValue)) {
+        // 遍历数组中的每个值
+        for (const value of classValue) {
+            // 如果值是字符串，则直接添加到结果集合中
+            if (typeof value === 'string') resultClassSet.add(value);
+            // 如果值是对象，则调用 handleObject 处理
+            else handleObject(resultClassSet, value);
+        }
+    } else {
+        // 如果 classValue 是对象，则调用 handleObject 处理
+        handleObject(resultClassSet, classValue);
+    }
+
+    // 将结果集合转换为数组，并用空格连接成字符串，并去除首尾空格后返回
+    return Array.from(resultClassSet).join(' ').trim();
+}
+
 function createRenderer(options: Options) {
     // 通过 options 得到操作 DOM 的 API
     const {
@@ -85,14 +117,6 @@ function createAppElement() {
     return appDiv
 }
 
-const vnode = {
-    type: 'p',
-    props: {
-        // 序列化后的结果
-        class: 'foo bar baz'
-    }
-}
-
 // 在创建 renderer 时传入配置项
 
 const renderer = createRenderer({
@@ -123,6 +147,26 @@ const renderer = createRenderer({
         }
     }
 })
+
+const vnode = {
+    type: 'p',
+    props: {
+        // 使用 normalizeClass 函数对值进行序列化
+        class: normalizeClass([
+            'foo bar',
+            { baz: true }
+        ])
+    }
+}
+console.log(`vnode :${ JSON.stringify(vnode) }`, vnode);
+
+// const vnode = {
+//     type: 'p',
+//     props: {
+//         // 序列化后的结果
+//         class: 'foo bar baz'
+//     }
+// }
 
 
 // 本章节代码ts注解不好搞，又是HTMLElement又是object，后面的章节再规范
