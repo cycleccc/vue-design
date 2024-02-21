@@ -154,8 +154,10 @@ const renderer = createRenderer({
                 if (!invoker) {
                     // 如果没有 invoker，则将一个伪造的 invoker 缓存到 el._vei 中
                     // vei 是 vue event invoker 的首字母缩写
-                    invoker = el._vei[key] = (e: string | EventListenerOrEventListenerObject | null) => {
+                    invoker = el._vei[key] = (e: Event) => {
                         // 如果 invoker.value 是数组，则遍历它并逐个调用事件处理函数
+                        // 如果事件发生的时间早于事件处理函数绑定的时间，则不处理执行事件处理函数
+                        if (e.timeStamp < invoker.attached) return
                         if (Array.isArray(invoker.value)) {
                             invoker.value.forEach((fn: Function) => fn(e))
                         } else {
@@ -166,6 +168,8 @@ const renderer = createRenderer({
                     }
                     // 将真正的事件处理函数赋值给 invoker.value
                     invoker.value = nextValue
+                    // 添加 invoker.attached 属性，存储事件处理函数被绑定的时间
+                    invoker.attached = performance.now()
                     // 绑定 invoker 作为事件处理函数
                     el.addEventListener(name, invoker)
                 } else {
