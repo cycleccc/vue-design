@@ -1,7 +1,7 @@
 interface VNode {
     type: string;
     props?: { [key: string]: any }; // 属性对象可以包含任意键值对
-    children?: string | VNode[];
+    children?: string | (VNode | string)[];
     el?: HTMLElement;
 }
 
@@ -52,13 +52,14 @@ function normalizeClass(classValue: string | { [key: string]: boolean } | Array<
     // 将结果集合转换为数组，并用空格连接成字符串，并去除首尾空格后返回
     return Array.from(resultClassSet).join(' ').trim();
 }
-function unmount(vnode: VNode) {
+function unmount(vnode: VNode | string) {
+    if (typeof vnode === "string") return
     const parent = vnode.el?.parentNode
     if (parent && vnode.el) {
         parent.removeChild(vnode.el)
     }
 }
-function patchProps(element: HTMLElement, key: string, prevValue: string | EventListenerOrEventListenerObject | null, nextValue: string | EventListenerOrEventListenerObject) {
+function patchProps(el: HTMLElement, key: string, prevValue: string | EventListenerOrEventListenerObject | null, nextValue: string | EventListenerOrEventListenerObject | null) {
     // 匹配以 on 开头的属性，视其为事件
     if (/^on/.test(key)) {
         // 定义 el._vei 为一个对象，存在事件名称到事件处理函数的映射
@@ -110,35 +111,49 @@ function patchProps(element: HTMLElement, key: string, prevValue: string | Event
     }
 }
 
-function patchElement(n1, n2) {
+function patchElement(n1: VNode, n2: VNode) {
     const el = n2.el = n1.el
     const oldProps = n1.props
     const newProps = n2.props
     // 第一步：更新 props
     for (const key in newProps) {
-        if (newProps[key] !== oldProps[key]) {
-            patchProps(el, key, oldProps[key], newProps[key])
+        if (newProps[key] !== oldProps?.[key]) {
+            el && patchProps(el, key, oldProps?.[key], newProps[key])
         }
     }
     for (const key in oldProps) {
-        if (!(key in newProps)) {
-            patchProps(el, key, oldProps[key], null)
+        if (newProps && !(key in newProps)) {
+            el && patchProps(el, key, oldProps[key], null)
         }
     }
 
     // 第二步：更新 children
     patchChildren(n1, n2, el)
 }
-function patchChildren(n1, n2, container) {
+function patchChildren(n1: VNode, n2: VNode, container: HTMLElement | undefined) {
     // 判断新子节点的类型是否是文本节点
     if (typeof n2.children === 'string') {
-        // 旧子节点的类型有三种可能：没有子节点、文本子节点以及一组子节点
+        // 旧子节点的类型有三种可能：
         // 只有当旧子节点为一组子节点时，才需要逐个卸载，其他情况下什么都不需要做
         if (Array.isArray(n1.children)) {
+            // 这里涉及到diff算法
             n1.children.forEach((c) => unmount(c))
         }
         // 最后将新的文本节点内容设置给容器元素
         setElementText(container, n2.children)
+    } else if (Array.isArray(n2.children)) {
+        // 说明新子节点是一组子节点
+
+        // 判断旧子节点是否也是一组子节点
+        if (Array.isArray(n1.children)) {
+            // 代码运行到这里，则说明新旧子节点都是一组子节点，这里涉及核心的 Diff 算法
+        } else {
+            // 此时：
+            // 旧子节点要么是文本子节点，要么不存在
+            // 但无论哪种情况，我们都只需要将容器清空，然后将新的一组子节点逐个挂载
+            setElementText(container, '')
+            n2.children.forEach(c => patch(null, c, container))
+        }
     }
 }
 function createRenderer(options: Options) {
@@ -170,7 +185,8 @@ function createRenderer(options: Options) {
         // 调用 insert 函数将元素插入到容器内
         insert(el, container)
     }
-    function patch(n1: VNode | null, n2: VNode, container: HTMLElement) {
+    function patch(n1: VNode | null, n2: VNode | string, container: HTMLElement) {
+        if (typeof n2 === 'string') return
         // 如果 n1 存在，则对比 n1 和 n2 的类型
         if (n1 && n1.type !== n2.type) {
             // 如果新旧 vnode 的类型不同，则直接将旧 vnode 卸载
