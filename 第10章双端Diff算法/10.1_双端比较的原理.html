@@ -94,7 +94,6 @@
                         oldStartVNode = oldChildren[++oldStartIdx]
                         newEndVNode = newChildren[--newEndIdx]
                     } else if (oldEndVNode.key === newStartVNode.key) {
-                        // 步骤四：oldEndVNode 和 newStartVNode 比对
                         patch(oldEndVNode, newStartVNode, container)
                         insert(oldEndVNode.el, container, oldStartVNode.el)
 
