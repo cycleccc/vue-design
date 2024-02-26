@@ -265,7 +265,7 @@
             }
         })
 
-        const oldVNode = {
+        const VNode1 = {
             type: 'div',
             children: [
                 { type: 'p', children: '1', key: 1 },
@@ -273,18 +273,18 @@
                 { type: 'p', children: 'hello', key: 3 }
             ]
         }
+    renderer.render(VNode1, document.querySelector('#app'))
 
-        const newVNode = {
-            type: 'div',
-            children: [
-                { type: 'p', children: 'world', key: 3 },
-                { type: 'p', children: '1', key: 1 },
-                { type: 'p', children: '2', key: 2 }
-            ]
-        }
+    const VNode2 = {
+        type: 'div',
+        children: [
+      { type: 'p', children: '4', key: 4 },
+        { type: 'p', children: 'world', key: 3 },
+        { type: 'p', children: '1', key: 1 },
+        { type: 'p', children: '2', key: 2 }
+    ]
+}
 
-        // 首次挂载
-        renderer.render(oldVNode, document.querySelector('#app'))
         setTimeout(() => {
             // 1 秒钟后更新
             renderer.render(newVNode, document.querySelector('#app'))
