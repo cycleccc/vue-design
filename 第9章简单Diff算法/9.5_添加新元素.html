@@ -28,7 +28,7 @@
                 setText
             } = options
 
-            function mountElement (vnode, container) {
+            function mountElement (vnode, container, anchor) {
                 const el = vnode.el = createElement(vnode.type)
                 if (typeof vnode.children === 'string') {
                     setElementText(el, vnode.children)
@@ -44,7 +44,7 @@
                     }
                 }
 
-                insert(el, container)
+                insert(el, container, anchor)
             }
 
             function patchChildren (n1, n2, container) {
@@ -155,7 +155,7 @@
                 }
             }
 
-            function patch (n1, n2, container) {
+            function patch (n1, n2, container, anchor) {
                 if (n1 && n1.type !== n2.type) {
                     unmount(n1)
                     n1 = null
@@ -165,7 +165,7 @@
 
                 if (typeof type === 'string') {
                     if (!n1) {
-                        mountElement(n2, container)
+                        mountElement(n2, container, anchor)
                     } else {
                         patchElement(n1, n2)
                     }
