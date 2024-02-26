@@ -64,10 +64,15 @@
 
                         const newVNode = newChildren[i];
                         // 遍历旧的 children
+                        // 在第一层循环中定义变量 find，代表是否在旧的一组子节点中找到可复用的节点，
+                        // 初始值为 false，代表没找到
+                        let find = false
                         for (let j = 0;j < oldChildren.length;j++) {
                             const oldVNode = oldChildren[j]
                             // 如果找到了具有相同 key 值的两个节点，说明可以复用但仍然需要调用 patch 函数更新
                             if (newVNode.key === oldVNode.key) {
+                                // 一旦找到可复用的节点，则将变量 find 的值设为 true
+                                find = true
                                 patch(oldVNode, newVNode, container)
                                 if (j < lastIndex) {
                                     // 如果当前找到的旧 children 中 的索引小于最大索引值 lastIndex，
@@ -89,6 +94,25 @@
                                 }
                                 break // 这里需要 break
                             }
+                        }
+                        // 如果代码运行到这里，find 仍然为 false，
+                        // 说明当前 newVNode 没有在旧的一组子节点中找到可复用的节点
+                        // 也就是说，当前 newVNode 是新增节点，需要挂载
+                        if (!find) {
+                            // 为了将节点挂载到正确位置，我们需要先获取锚点元素
+                            // 首先获取当前 newVNode 的前一个 vnode 节点
+                            const prevVNode = newChildren[i - 1]
+                            let anchor = null
+                            if (prevVNode) {
+                                // 如果有前一个 vnode 节点，则使用它的下一个兄弟节点作为锚点元素
+                                anchor = prevVNode.el.nextSibling
+                            } else {
+                                // 如果没有前一个 vnode 节点，说明即将挂载的新节点是第一个子节点
+                                // 这时我们使用容器元素的 firstChild 作为锚点
+                                anchor = container.firstChild
+                            }
+                            // 挂载 newVNode
+                            patch(null, newVNode, container, anchor)
                         }
                     }
                 } else {

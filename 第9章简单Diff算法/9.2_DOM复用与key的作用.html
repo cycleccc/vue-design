@@ -70,23 +70,6 @@
                             }
                         }
                     }
-                    const oldLen = oldChildren.length
-                    const newLen = newChildren.length
-                    const commonLength = Math.min(oldLen, newLen)
-                    for (let i = 0;i < commonLength;i++) {
-                        patch(oldChildren[i], newChildren[i])
-                    }
-                    // 如果 nextLen > prevLen，将多出来的元素添加
-                    if (newLen > oldLen) {
-                        for (let i = commonLength;i < newLen;i++) {
-                            patch(null, newChildren[i], container)
-                        }
-                    } else if (oldLen > newLen) {
-                        // 如果 prevLen > nextLen，将多出来的元素移除
-                        for (let i = commonLength;i < oldLen;i++) {
-                            unmount(oldChildren[i])
-                        }
-                    }
                 } else {
                     if (Array.isArray(n1.children)) {
                         n1.children.forEach(c => unmount(c))
