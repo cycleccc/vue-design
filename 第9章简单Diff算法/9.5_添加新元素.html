@@ -273,22 +273,22 @@
                 { type: 'p', children: 'hello', key: 3 }
             ]
         }
-    renderer.render(VNode1, document.querySelector('#app'))
+        renderer.render(VNode1, document.querySelector('#app'))
 
-    const VNode2 = {
-        type: 'div',
-        children: [
-      { type: 'p', children: '4', key: 4 },
-        { type: 'p', children: 'world', key: 3 },
-        { type: 'p', children: '1', key: 1 },
-        { type: 'p', children: '2', key: 2 }
-    ]
-}
+        const VNode2 = {
+            type: 'div',
+            children: [
+                { type: 'p', children: '4', key: 4 },
+                { type: 'p', children: 'world', key: 3 },
+                { type: 'p', children: '1', key: 1 },
+                { type: 'p', children: '2', key: 2 }
+            ]
+        }
 
         setTimeout(() => {
-            // 1 秒钟后更新
-            renderer.render(newVNode, document.querySelector('#app'))
-        }, 1000);
+            console.log('update')
+            renderer.render(VNode2, document.querySelector('#app'))
+        }, 400);
 
 
 
