@@ -1,13 +1,6 @@
 {
-  "type": "module",
-  "scripts": {
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix"
-  },
-  "devDependencies": {
-    "@antfu/eslint-config": "^2.6.4",
-    "eslint": "^8.56.0",
-    "lint-staged": "^15.2.0",
+"type": "module",
+"devDependencies": {
     "typescript": "^5.3.3"
   }
 }
