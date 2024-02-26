@@ -48,36 +48,50 @@
             }
 
             function patchChildren (n1, n2, container) {
+                // 如果新虚拟节点的子节点是文本节点
                 if (typeof n2.children === 'string') {
+                    // 如果旧虚拟节点的子节点是数组，表示之前是多个子节点，需要将其全部移除
                     if (Array.isArray(n1.children)) {
-                        n1.children.forEach((c) => unmount(c))
+                        n1.children.forEach((c) => unmount(c));
                     }
-                    setElementText(container, n2.children)
-                } else if (Array.isArray(n2.children)) {
-                    const oldChildren = n1.children
-                    const newChildren = n2.children
-                    const oldLen = oldChildren.length
-                    const newLen = newChildren.length
-                    const commonLength = Math.min(oldLen, newLen)
+                    // 更新容器中的文本内容为新的子节点文本内容
+                    setElementText(container, n2.children);
+                }
+                // 如果新虚拟节点的子节点是数组
+                else if (Array.isArray(n2.children)) {
+                    const oldChildren = n1.children; // 旧子节点数组
+                    const newChildren = n2.children; // 新子节点数组
+                    const oldLen = oldChildren.length; // 旧子节点数组长度
+                    const newLen = newChildren.length; // 新子节点数组长度
+                    const commonLength = Math.min(oldLen, newLen); // 计算公共部分的长度，即两个数组共同的部分
+                    // 循环遍历公共部分的子节点，逐个进行更新
                     for (let i = 0;i < commonLength;i++) {
-                        patch(oldChildren[i], newChildren[i])
+                        patch(oldChildren[i], newChildren[i]);
                     }
-                    // 如果 nextLen > prevLen，将多出来的元素添加
+                    // 如果新子节点数组的长度大于旧子节点数组的长度，表示有新增的子节点
                     if (newLen > oldLen) {
+                        // 遍历新增的子节点，逐个进行挂载
                         for (let i = commonLength;i < newLen;i++) {
-                            patch(null, newChildren[i], container)
-                        }
-                    } else if (oldLen > newLen) {
-                        // 如果 prevLen > nextLen，将多出来的元素移除
-                        for (let i = commonLength;i < oldLen;i++) {
-                            unmount(oldChildren[i])
+                            patch(null, newChildren[i], container);
                         }
                     }
-                } else {
+                    // 如果旧子节点数组的长度大于新子节点数组的长度，表示有移除的子节点
+                    else if (oldLen > newLen) {
+                        // 遍历移除的子节点，逐个进行卸载
+                        for (let i = commonLength;i < oldLen;i++) {
+                            unmount(oldChildren[i]);
+                        }
+                    }
+                }
+                // 如果新虚拟节点的子节点不是文本节点也不是数组，表示是单个子节点
+                else {
+                    // 如果旧虚拟节点的子节点是数组，表示之前是多个子节点，需要将其全部移除
                     if (Array.isArray(n1.children)) {
-                        n1.children.forEach(c => unmount(c))
-                    } else if (typeof n1.children === 'string') {
-                        setElementText(container, '')
+                        n1.children.forEach(c => unmount(c));
+                    }
+                    // 如果旧虚拟节点的子节点是文本节点，需要清空容器中的文本内容
+                    else if (typeof n1.children === 'string') {
+                        setElementText(container, '');
                     }
                 }
             }
