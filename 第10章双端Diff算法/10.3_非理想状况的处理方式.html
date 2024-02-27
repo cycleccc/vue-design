@@ -79,7 +79,12 @@
                 let newEndVNode = newChildren[newEndIdx]
 
                 while (oldStartIdx <= oldEndIdx && newStartIdx <= newEndIdx) {
-                    if (oldStartVNode.key === newStartVNode.key) {
+                    // 增加两个判断分支，如果头尾部节点为 undefined，则说明该节点已经被处理过了，直接跳到下一个位置
+                    if (!oldStartVNode) {
+                        oldStartVNode = oldChildren[++oldStartIdx]
+                    } else if (!oldEndVNode) {
+                        oldEndVNode = oldChildren[--oldEndIdx]
+                    } else if (oldStartVNode.key === newStartVNode.key) {
                         patch(oldStartVNode, newStartVNode, container)
                         oldStartVNode = oldChildren[++oldStartIdx]
                         newStartVNode = newChildren[++newStartIdx]
@@ -100,9 +105,24 @@
                         oldEndVNode = oldChildren[--oldEndIdx]
                         newStartVNode = newChildren[++newStartIdx]
                     } else {
+                        // 遍历旧的一组子节点，试图寻找与 newStartVNode 拥有相同 key 值的索引
+                        // idxInOld 就是新的一组子节点的头部节点在旧的一组子节点中的索引
                         const idxInOld = oldChildren.findIndex(
                             node => node.key === newStartVNode.key
                         )
+                        // idxInOld 大于 0，说明找到了可复用的节点，并且需要将其对应的真实 DOM 移动到头部
+                        if (idxInOld > 0) {
+                            // idxInOld 位置对应的 vnode 就是需要移动的节点
+                            const vnodeToMove = oldChildren[idxInOld]
+                            // 不要忘记除移动操作外还应该打补丁
+                            patch(vnodeToMove, newStartVNode, container)
+                            // 将 vnodeToMove.el 移动到头部节点 oldStartVNode.el 之前，因此使用后者作为锚点
+                            insert(vnodeToMove.el, container, oldStartVNode.el)
+                            // 由于位置 idxInOld 处的节点所对应的真实 DOM 已经移动到了别处，因此将其设置为 undefined
+                            oldChildren[idxInOld] = undefined
+                            // 最后更新 newStartIdx 到下一个位置
+                            newStartVNode = newChildren[++newStartIdx]
+                        }
                     }
                 }
             }
