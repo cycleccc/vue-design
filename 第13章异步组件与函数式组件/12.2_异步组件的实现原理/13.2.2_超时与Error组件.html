@@ -11,8 +11,7 @@
     <div id="app"></div>
     <script src="https://unpkg.com/@vue/reactivity@3.0.5/dist/reactivity.global.js"></script>
     <script>
-
-        const { effect, reactive, shallowReactive, shallowReadonly } = VueReactivity
+        const { effect, reactive, shallowReactive, shallowReadonly, shallowRef } = VueReactivity
         function shouldSetAsProps (el, key, value) {
             if (key === 'form' && el.tagName === 'INPUT') return false
             return key in el
@@ -98,17 +97,45 @@
                         // 异步组件是否加载成功
                         const loaded = ref(false)
                         // 代表是否超时，默认为 false，既没有超时
-                        const timeout = ref(false)
+                        // const timeout = ref(false)
+                        // 定义 error，当错误发生时，用来存储错误对象
+                        const error = shallowRef(null, loaded)
                         // 执行加载器函数，返回一个 Promise 实例
                         // 加载成功后，将加载成功的组件赋值给 InnerComp，并将 loaded 标记为 true，代表加载成功
                         loader().then(c => {
                             InnerComp = c
                             loaded.value = true
-                        })
+                            // 添加 catch 语句来捕获加载过程中的错误
+                        }).catch((err) => error.value = err)
+                        let timer = null
+                        if (options.timeout) {
+                            // 如果指定了超时时长，则开启一个定时器计时
+                            timer = setTimeout(() => {
+                                // 超时后创建一个错误对象，并复制给 error.value
+                                const err = new Error(`Async component timed out after ${ options.timeout } seconds.timeout="${ options.timeout }ms.`)
+                                error.value = err
+                                // 超时后将 timeout 设置为 true
+                                // timeout.value = true
+                            }, options.timeout)
+                        }
+                        // 包装组件被卸载时清除定时器
+                        onUmounted(() => clearTimeout(timer))
+
+                        // 占位内容
+                        const placeholder = { type: Text, children: '' }
 
                         return () => {
-                            // 如果异步组件加载成功，则渲染该组件，否则渲染一个占位内容
-                            return loaded.value ? { type: InnerComp } : { type: Text, children: '' }
+                            if (loaded.value) {
+                                // 如果组件异步加载成功，则渲染被加载的组件
+                                return { type: InnerComp }
+                                // } else if (timeout.value) {
+                            } else if (error.value && options.errorComponent) {
+                                // 如果加载超时，并且用户指定了 Error 组件，则渲染该组件
+                                // return options.errorComponent ? { type: options.errorComponent } : placeholder
+                                // 只有当错误存在且用户配置了 errorComponent 时才展示 Error 组件，同时将 error 作为 props 传递
+                                return { type: options.errorComponent, props: { error: error.value } }
+                            }
+                            return placeholder
                         }
                     }
                 }
