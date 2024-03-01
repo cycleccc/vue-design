@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <div id="app"></div>
+    <script src="https://unpkg.com/@vue/reactivity@3.0.5/dist/reactivity.global.js"></script>
+    <script>
+
+        const { effect, reactive, shallowReactive, shallowReadonly } = VueReactivity
+        function shouldSetAsProps (el, key, value) {
+            if (key === 'form' && el.tagName === 'INPUT') return false
+            return key in el
+        }
+
+        function createRenderer (options) {
+
+            const {
+                createElement,
+                insert,
+                setElementText,
+                patchProps,
+                createText,
+                setText
+            } = options
+
+            function mountElement (vnode, container, anchor) {
+                const el = vnode.el = createElement(vnode.type)
+                if (typeof vnode.children === 'string') {
+                    setElementText(el, vnode.children)
+                } else if (Array.isArray(vnode.children)) {
+                    vnode.children.forEach(child => {
+                        patch(null, child, el)
+                    })
+                }
+
+                if (vnode.props) {
+                    for (const key in vnode.props) {
+                        patchProps(el, key, null, vnode.props[key])
+                    }
+                }
+
+                insert(el, container, anchor)
+            }
+
+            const queue = new Set()
+
+            let isFlushing = false
+
+            const p = Promise.resolve()
+
+            function queueJob (job) {
+
+                queue.add(job)
+
+                if (!isFlushing) {
+
+                    isFlushing = true
+
+                    p.then(() => {
+                        try {
+
+                            queue.forEach(job => job())
+                        } finally {
+
+                            isFlushing = false
+                            queue.clear = 0
+                        }
+                    })
+                }
+            }
+
+            function mountComponent (vnode, container, anchor) {
+                const componentOptions = vnode.type
+
+                const { render, data,
+                    props: propsOption,
+                    setup,
+                    beforeCreate, created, beforeMount, mounted, beforeUpdate, updated } = componentOptions
+
+                beforeCreate && beforeCreate()
+
+                const state = data ? reactive(data()) : null
+                // 调用 resolveProps 函数解析出最终的 props 数据与 attrs 数据
+                const [props, attrs] = resolveProps(propsOption, vnode.props)
+
+                const instance = {
+                    state,
+                    // 将解析出的 props 数据包装为 shallowReactive 并定义到组件实例上
+                    props: shallowReactive(props),
+                    isMounted: false,
+                    subTree: null,
+                    // 将插槽添加到组件实例上
+                    slots
+                }
+                // 定义 emit 函数，它接收两个参数
+                // event: 事件名称
+                // payload: 传递给事件处理函数的参数
+                function emit (event, ...payload) {
+                    // 根据约定对事件名称进行处理，例如 change --> onChange
+                    const eventName = `on${ event[0].toUpperCase() + event.slice(1) }`
+                    // 根据处理后的事件名称去 props 中寻找对应的事件处理函数
+                    const handler = instance.props[eventName]
+                    if (handler) {
+                        // 调用事件处理函数并传递参数
+                        handler(...payload)
+                    } else {
+                        console.error('事件不存在')
+                    }
+                }
+
+                // 直接使用编译好的 vnode.children 对象作为 slots 对象即可
+                const slots = vnode.children || {}
+                // 就slots 对象添加到 setupContext 中
+                const setupContext = { attrs, emit, slots }
+                // 调用 setup 函数，将只读版本的 props 作为第一个参数传递，避免用户意外地修改 props 的值，
+                // 将 setupContext 作为第二个参数传递
+                const setupResult = setup(shallowReadonly(instance.props), setupContext)
+                // setupState 用来存储由 setup 返回的数据
+                let setupState = null
+                // 如果 setup 函数的返回值是函数，则将其作为渲染函数
+                if (typeof setupResult === 'function') {
+                    // 报告冲突
+                    if (render) console.error('setup 函数返回渲染函数，render 选项将被忽略')
+                    // 将 setupResult 作为渲染函数
+                    render = setupResult
+                } else {
+                    // 如果 setup 的返回值不是函数，则作为数据状态赋值给 setupState
+                    setupState = setupResult
+                }
+                vnode.component = instance
+                // 创建渲染上下文对象，本质上是组件实例的代理
+                const renderContext = new Proxy(instance, {
+                    get (t, k, r) {
+                        // 取得组件自身状态与 props 数据
+                        const { state, props, slots } = t
+                        // 当 k 的值为 $slots 时，直接返回组件实例上的 slots
+                        if (k === '$slots') return slots
+                        // 先尝试读取自身状态数据
+                        if (state && k in state) {
+                            return state[k]
+                        } else if (k in props) { // 如果组件自身没有该数据，则尝试从 props 中读取
+                            return props[k]
+                        } else if (setupState && k in setupState) {
+                            // 渲染上下文需要增加对 setupState 的支持
+                            return setupState[k]
+                        } else {
+                            console.error('不存在')
+                        }
+                    },
+                    set (t, k, v, r) {
+                        const { state, props } = t
+                        if (state && k in state) {
+                            state[k] = v
+                        } else if (k in props) {
+                            console.warn(`Attempting to mutate prop "${ k }". Props are readonly.`)
+                        } else if (setupState && k in setupState) {
+                            // 渲染上下文需要增加对 setupState 的支持
+                            setupState[k] = v
+                        }
+                        else {
+                            console.error('不存在')
+                        }
+                    }
+                })
+
+                // 生命周期函数调用时要绑定渲染上下文对象
+                created && created.call(renderContext)
+                effect(() => {
+                    const subTree = render.call(state, state)
+                    if (!instance.isMounted) {
+                        beforeMount && beforeMount.call(state)
+                        patch(null, subTree, container, anchor)
+                        instance.isMounted = true
+                        mounted && mounted.call(state)
+                    } else {
+                        beforeUpdate && beforeUpdate.call(state)
+                        patch(instance.subTree, subTree, container, anchor)
+                        updated && updated.call(state)
+                    }
+                    instance.subTree = subTree
+                }, { scheduler: queueJob })
+            }
+            function patchComponent (n1, n2, anchor) {
+                // 获取组件实例，即 n1.component，同时让新的组件虚拟节点 n2.component 也指向组件实例
+                const instance = (n2.component = n1.component)
+                // 获取当前的 props 数据
+                const { props } = instance
+                // 调用 hasPropsChanged 检测为子组件传递的 props 是否发生变化，如果没有变化，则不需要更新
+                if (hasPropsChanged(n1.props, n2.props)) {
+                    // 调用 resolveProps 函数重新获取 props 数据
+                    const [nextProps] = resolveProps(n2.type.props, n2.props)
+                    // 更新 props
+                    for (const k in nextProps) {
+                        props[k] = nextProps[k]
+                    }
+                    // 删除不存在的 props
+                    for (const k in props) {
+                        if (!(k in nextProps)) delete props[k]
+                    }
+                }
+            }
+
+            function hasPropsChanged (
+                prevProps,
+                nextProps
+            ) {
+                const nextKeys = Object.keys(nextProps)
+                // 如果新旧 props 的数量变了，则说明有变化
+                if (nextKeys.length !== Object.keys(prevProps).length) {
+                    return true
+                }
+                // 只有
+                for (let i = 0;i < nextKeys.length;i++) {
+                    const key = nextKeys[i]
+                    // 有不相等的 props，则说明有变化
+                    if (nextProps[key] !== prevProps[key]) return true
+                }
+                return false
+            }
+            // resolveProps 函数用于解析组件 props 和 attrs 数据
+            function resolveProps (options, propsData) {
+                const props = {}
+                const attrs = {}
+                // 遍历为组件传递的 props 数据
+                for (const key in propsData) {
+                    if (key in options || key.startsWith('on')) {
+                        // 如果为组件传递的 props 数据在组件自身的 props 选项中有定义，则将其视为合法的 props
+                        // 以字符串 on 开头的 props，无论是否显示地声明，都将其添加到 props 数据中，而不是添加到 attrs 中
+                        props[key] = propsData[key]
+                    } else {
+                        // 否则将其作为 attrs
+                        attrs[key] = propsData[key]
+                    }
+                }
+
+                // 最后返回 props 与 attrs 数据
+                return [props, attrs]
+            }
+
+            function patchChildren (n1, n2, container) {
+                if (typeof n2.children === 'string') {
+                    if (Array.isArray(n1.children)) {
+                        n1.children.forEach((c) => unmount(c))
+                    }
+                    setElementText(container, n2.children)
+                } else if (Array.isArray(n2.children)) {
+                    patchKeyedChildren(n1, n2, container)
+                } else {
+                    if (Array.isArray(n1.children)) {
+                        n1.children.forEach(c => unmount(c))
+                    } else if (typeof n1.children === 'string') {
+                        setElementText(container, '')
+                    }
+                }
+            }
+
+            function patchKeyedChildren (n1, n2, container) {
+                const newChildren = n2.children
+                const oldChildren = n1.children
+
+                let j = 0
+                let oldVNode = oldChildren[j]
+                let newVNode = newChildren[j]
+                while (oldVNode.key === newVNode.key) {
+                    patch(oldVNode, newVNode, container)
+                    j++
+                    oldVNode = oldChildren[j]
+                    newVNode = newChildren[j]
+                }
+                let oldEnd = oldChildren.length - 1
+                let newEnd = newChildren.length - 1
+
+                oldVNode = oldChildren[oldEnd]
+                newVNode = newChildren[newEnd]
+
+                while (oldVNode.key === newVNode.key) {
+                    patch(oldVNode, newVNode, container)
+                    oldEnd--
+                    newEnd--
+                    oldVNode = oldChildren[oldEnd]
+                    newVNode = newChildren[newEnd]
+                }
+                if (j > oldEnd && j <= newEnd) {
+                    const anchorIndex = newEnd + 1
+                    const anchor = anchorIndex < newChildren.length ? newChildren[anchorIndex].el : null
+                    while (j <= newEnd) {
+                        patch(null, newChildren[j++], container, anchor)
+                    }
+                } else if (j > newEnd && j <= oldEnd) {
+                    while (j <= oldEnd) {
+                        unmount(oldChildren[j++])
+                    }
+                } else {
+                    const count = newEnd - j + 1
+                    const source = new Array(count)
+                    source.fill(-1)
+
+                    const oldStart = j
+                    const newStart = j
+                    let moved = false
+                    let pos = 0
+
+                    const keyIndex = {}
+                    for (let i = newStart;i <= newEnd;i++) {
+                        keyIndex[newChildren[i].key] = i
+                    }
+                    let patched = 0
+                    for (let i = oldStart;i <= oldEnd;i++) {
+                        oldVNode = oldChildren[i]
+                        if (patched <= count) {
+                            const k = keyIndex[oldVNode.key]
+
+                            if (typeof k !== 'undefined') {
+                                newVNode = newChildren[k]
+                                patch(oldVNode, newVNode, container)
+                                source[k - newStart] = i
+                                if (k < pos) {
+                                    moved = true
+                                } else {
+                                    pos = k
+                                }
+                            } else {
+                                unmount(oldVNode)
+                            }
+                        } else {
+                            unmount(oldVNode)
+                        }
+                    }
+
+                    if (moved) {
+                        const seq = lis(source)
+                        let s = seq.length - 1
+                        let i = count - 1
+                        for (i;i >= 0;i--) {
+                            if (source[i] === -1) {
+                                const pos = i + newStart
+                                const newVNode = newChildren[pos]
+                                const nextPos = pos + 1
+                                const anchor = nextPos < newChildren.length
+                                    ? newChildren[nextPos].el
+                                    : null
+                                patch(null, newVNode, container, anchor)
+                            } else if (i !== seq[s]) {
+                                const pos = i + newStart
+                                const newVNode = newChildren[pos]
+                                const nextPos = pos + 1
+                                const anchor = nextPos < newChildren.length
+                                    ? newChildren[nextPos].el
+                                    : null
+                                insert(newVNode.el, container, anchor)
+                            } else {
+                                s--
+                            }
+                        }
+                    }
+                }
+            }
+            function lis (arr) {
+                const p = arr.slice()
+                const result = [0]
+                let i, j, u, v, c
+                const len = arr.length
+                for (i = 0;i < len;i++) {
+                    const arrI = arr[i]
+                    if (arrI !== 0) {
+                        j = result[result.length - 1]
+                        if (arr[j] < arrI) {
+                            p[i] = j
+                            result.push(i)
+                            continue
+                        }
+                        u = 0
+                        v = result.length - 1
+                        while (u < v) {
+                            c = ((u + v) / 2) | 0
+                            if (arr[result[c]] < arrI) {
+                                u = c + 1
+                            } else {
+                                v = c
+                            }
+                        }
+                        if (arrI < arr[result[u]]) {
+                            if (u > 0) {
+                                p[i] = result[u - 1]
+                            }
+                            result[u] = i
+                        }
+                    }
+                }
+                u = result.length
+                v = result[u - 1]
+                while (u-- > 0) {
+                    result[u] = v
+                    v = p[v]
+                }
+                return result
+            }
+            function patchElement (n1, n2) {
+                const el = n2.el = n1.el
+                const oldProps = n1.props
+                const newProps = n2.props
+
+                for (const key in newProps) {
+                    if (newProps[key] !== oldProps[key]) {
+                        patchProps(el, key, oldProps[key], newProps[key])
+                    }
+                }
+                for (const key in oldProps) {
+                    if (!(key in newProps)) {
+                        patchProps(el, key, oldProps[key], null)
+                    }
+                }
+
+                patchChildren(n1, n2, el)
+            }
+
+            function unmount (vnode) {
+                if (vnode.type === Fragment) {
+                    vnode.children.forEach(c => unmount(c))
+                    return
+                }
+                const parent = vnode.el.parentNode
+                if (parent) {
+                    parent.removeChild(vnode.el)
+                }
+            }
+
+            function patch (n1, n2, container, anchor) {
+                if (n1 && n1.type !== n2.type) {
+                    unmount(n1)
+                    n1 = null
+                }
+
+                const { type } = n2
+
+                if (typeof type === 'string') {
+                    if (!n1) {
+                        mountElement(n2, container, anchor)
+                    } else {
+                        patchElement(n1, n2)
+                    }
+                } else if (type === Text) {
+                    if (!n1) {
+                        const el = n2.el = createText(n2.children)
+                        insert(el, container)
+                    } else {
+                        const el = n2.el = n1.el
+                        if (n2.children !== n1.children) {
+                            setText(el, n2.children)
+                        }
+                    }
+                } else if (type === Fragment) {
+                    if (!n1) {
+                        n2.children.forEach(c => patch(null, c, container))
+                    } else {
+                        patchChildren(n1, n2, container)
+                    }
+                } else if (typeof type === 'object') {
+                    if (!n1) {
+                        mountComponent(n2, container, anchor)
+                    } else {
+                        patchComponent(n1, n2, anchor)
+                    }
+                }
+
+            }
+
+            function render (vnode, container) {
+                if (vnode) {
+                    patch(container._vnode, vnode, container)
+                } else {
+                    if (container._vnode) {
+                        unmount(container._vnode)
+                    }
+                }
+                container._vnode = vnode
+            }
+
+            return {
+                render
+            }
+        }
+
+        const renderer = createRenderer({
+            createElement (tag) {
+                return document.createElement(tag)
+            },
+            setElementText (el, text) {
+                el.textContent = text
+            },
+            insert (el, parent, anchor = null) {
+                parent.insertBefore(el, anchor)
+            },
+            createText (text) {
+                return document.createTextNode(text)
+            },
+            setText (el, text) {
+                el.nodeValue = text
+            },
+            patchProps (el, key, prevValue, nextValue) {
+                if (/^on/.test(key)) {
+                    const invokers = el._vei || (el._vei = {})
+                    let invoker = invokers[key]
+                    const name = key.slice(2).toLowerCase()
+                    if (nextValue) {
+                        if (!invoker) {
+                            invoker = el._vei[key] = (e) => {
+                                console.log(e.timeStamp)
+                                console.log(invoker.attached)
+                                if (e.timeStamp < invoker.attached) return
+                                if (Array.isArray(invoker.value)) {
+                                    invoker.value.forEach(fn => fn(e))
+                                } else {
+                                    invoker.value(e)
+                                }
+                            }
+                            invoker.value = nextValue
+                            invoker.attached = performance.now()
+                            el.addEventListener(name, invoker)
+                        } else {
+                            invoker.value = nextValue
+                        }
+                    } else if (invoker) {
+                        el.removeEventListener(name, invoker)
+                    }
+                } else if (key === 'class') {
+                    el.className = nextValue || ''
+                } else if (shouldSetAsProps(el, key, nextValue)) {
+                    const type = typeof el[key]
+                    if (type === 'boolean' && nextValue === '') {
+                        el[key] = true
+                    } else {
+                        el[key] = nextValue
+                    }
+                } else {
+                    el.setAttribute(key, nextValue)
+                }
+            }
+        })
+        const Text = Symbol()
+        const Fragment = Symbol()
+
+        const MyComponent = {
+            name: 'MyComponent',
+            setup (props, { emits }) {
+                // 发射 change 事件，并传递给事件处理函数两个参数
+                emit('change', 1, 2)
+                return () => {
+                    return
+                }
+            }
+        }
+
+
+        const CompVNode = {
+            type: MyComponent,
+            props: {
+                onChange: handler
+            }
+        }
+
+        renderer.render(CompVNode, document.querySelector('#app'))
+
+    </script>
+</body>
+
+</html>
