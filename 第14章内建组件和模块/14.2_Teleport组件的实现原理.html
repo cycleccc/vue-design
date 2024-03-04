@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <div id="app"></div>
+    <script src="https://unpkg.com/@vue/reactivity@3.0.5/dist/reactivity.global.js"></script>
+    <script>
+        const { effect, reactive, shallowReactive, shallowReadonly, shallowRef } = VueReactivity
+        function shouldSetAsProps (el, key, value) {
+            if (key === 'form' && el.tagName === 'INPUT') return false
+            return key in el
+        }
+
+        function createRenderer (options) {
+
+            const {
+                createElement,
+                insert,
+                setElementText,
+                patchProps,
+                createText,
+                setText
+            } = options
+            function mountElement (vnode, container, anchor) {
+                const el = vnode.el = createElement(vnode.type)
+                if (typeof vnode.children === 'string') {
+                    setElementText(el, vnode.children)
+                } else if (Array.isArray(vnode.children)) {
+                    vnode.children.forEach(child => {
+                        patch(null, child, el)
+                    })
+                }
+
+                if (vnode.props) {
+                    for (const key in vnode.props) {
+                        patchProps(el, key, null, vnode.props[key])
+                    }
+                }
+
+                insert(el, container, anchor)
+            }
+
+            const queue = new Set()
+            let isFlushing = false
+            const p = Promise.resolve()
+            function queueJob (job) {
+                queue.add(job)
+                if (!isFlushing) {
+                    isFlushing = true
+                    p.then(() => {
+                        try {
+                            queue.forEach(job => job())
+                        } finally {
+                            isFlushing = false
+                            queue.clear = 0
+                        }
+                    })
+                }
+            }
+
+            let currentInstance = null
+            function setCurrentInstance (instance) {
+                currentInstance = instance
+            }
+            function onMounted (fn) {
+                if (currentInstance) {
+                    currentInstance.mounted.push(fn)
+                } else {
+                    console.error('onMounted 函数只能在 setup 中调用')
+                }
+            }
+
+            // defineAsyncComponent 函数用于定义一个异步组件，接收一个异步组件加载器作为参数
+            function defineAsyncComponent (options) {
+                // options 可以是配置项，也可以是加载器
+                if (typeof options === 'function') {
+                    // 如果 options 是加载器，则将其格式化为配置项形式
+                    options = {
+                        loader: options
+                    }
+                }
+
+                const { loader } = options
+
+                let InnerComp = null
+
+                // 记录重试次数
+                let retries = 0
+                // 封装 load 函数用来加载异步组件
+                function load () {
+                    return loader()
+                        // 捕获加载器的错误
+                        .catch((err) => {
+                            // 如果用户指定了 onError 回调，则将控制权交给用户
+                            if (options.onError) {
+                                // 返回一个新的 Promise 实例
+                                return new Promise((resolve, reject) => {
+                                    // 重试
+                                    const retry = () => {
+                                        resolve(load())
+                                        retries++
+                                    }
+                                    // 失败
+                                    const fail = () => reject(err)
+                                    // 作为 onError 回调函数的参数，让用户来决定下一步怎么做
+                                    options.onError(retry, fail, retries)
+                                })
+                            } else {
+                                throw error
+                            }
+                        })
+                }
+
+                return {
+                    name: 'AsyncComponentWrapper',
+                    setup () {
+                        const loaded = ref(false)
+                        const error = shallowRef(null)
+                        const loading = ref(false)
+
+                        let loadingTimer = null
+                        if (options.delay) {
+                            loadingTimer = setTimeout(() => {
+                                loading.value = true
+                            }, options.delay);
+                        } else {
+                            loading.value = true
+                        }
+                        // 调用 load 函数加载组件
+                        load()
+                            .then(c => {
+                                InnerComp = c
+                                loaded.value = true
+                            })
+                            .catch((err) => {
+                                error.value = err
+                            })
+                            .finally(() => {
+                                loading.value = false
+                                clearTimeout(loadingTimer)
+                            })
+
+
+                        let timer = null
+                        if (options.timeout) {
+                            timer = setTimeout(() => {
+                                const err = new Error(`Async component timed out after ${ options.timeout } seconds.timeout="${ options.timeout }ms.`)
+                                error.value = err
+                            }, options.timeout)
+                        }
+                        onUmounted(() => clearTimeout(timer))
+
+                        const placeholder = { type: Text, children: '' }
+
+                        return () => {
+                            if (loaded.value) {
+                                // 如果组件异步加载成功，则渲染被加载的组件
+                                return { type: InnerComp }
+                                // } else if (timeout.value) {
+                            } else if (error.value && options.errorComponent) {
+                                // 如果加载超时，并且用户指定了 Error 组件，则渲染该组件
+                                // return options.errorComponent ? { type: options.errorComponent } : placeholder
+                                // 只有当错误存在且用户配置了 errorComponent 时才展示 Error 组件，同时将 error 作为 props 传递
+                                return { type: options.errorComponent, props: { error: error.value } }
+                            } else if (loading.value && options.loadingComponent) {
+                                // 如果异步组件正在加载，并且用户指定了 Loading 组件，则渲染 Loading 组件
+                                return { type: options.loadingComponent }
+                            }
+
+                            return placeholder
+                        }
+                    }
+                }
+            }
+
+            function mountComponent (vnode, container, anchor) {
+                // 检查是否支持函数式组件
+                const isFunctional = typeof vnode.type === 'function'
+
+                let componentOptions = vnode.type
+                if (isFunctional) {
+                    // 如果是函数式组件，则将 vnode.type 作为渲染函数，将 vnode.type.props 作为 props 选项定义即可
+                    componentOptions = {
+                        render: vnode.type,
+                        props: vnode.type.props
+                    }
+                }
+
+                const { render, data,
+                    props: propsOption,
+                    setup,
+                    beforeCreate, created, beforeMount, mounted, beforeUpdate, updated } = componentOptions
+
+                beforeCreate && beforeCreate()
+
+                const state = data ? reactive(data()) : null
+                const [props, attrs] = resolveProps(propsOption, vnode.props)
+
+                const instance = {
+                    state,
+                    props: shallowReactive(props),
+                    isMounted: false,
+                    subTree: null,
+                    slots,
+                    mounted: [],
+                    // 只有 KeepAlive 组件的实例下会有 KeepAliveCtx 属性
+                    keepAliveCtx: null
+                }
+                // 检查当前要挂载的组件是否是 KeepAlive 组件
+                const isKeepAlive = vnode.type.__isKeepAlive
+                if (isKeepAlive) {
+                    // 在 KeepAlive 组件实例上添加 keepAliveCtx 对象
+                    instance.keepAliveCtx = {
+                        // move 函数用来移动一段 vnode
+                        move (vnode, container, anchor) {
+                            // 本质上是将组件渲染的内容移动到指定容器中，即隐藏容器中
+                            insert(vnode.component.subTree.el, container, anchor)
+                        },
+                        createElement
+                    }
+                }
+                function emit (event, ...payload) {
+                    const eventName = `on${ event[0].toUpperCase() + event.slice(1) }`
+                    const handler = instance.props[eventName]
+                    if (handler) {
+                        handler(...payload)
+                    } else {
+                        console.error('事件不存在')
+                    }
+                }
+
+                const slots = vnode.children || {}
+                const setupContext = { attrs, emit, slots }
+                setCurrentInstance(instance)
+                const setupResult = setup(shallowReadonly(instance.props), setupContext)
+                setCurrentInstance(null)
+                let setupState = null
+                if (typeof setupResult === 'function') {
+                    if (render) console.error('setup 函数返回渲染函数，render 选项将被忽略')
+                    render = setupResult
+                } else {
+                    setupState = setupResult
+                }
+                vnode.component = instance
+                const renderContext = new Proxy(instance, {
+                    get (t, k, r) {
+                        const { state, props, slots } = t
+                        if (k === '$slots') return slots
+                        if (state && k in state) {
+                            return state[k]
+                        } else if (k in props) { // 如果组件自身没有该数据，则尝试从 props 中读取
+                            return props[k]
+                        } else if (setupState && k in setupState) {
+                            return setupState[k]
+                        } else {
+                            console.error('不存在')
+                        }
+                    },
+                    set (t, k, v, r) {
+                        const { state, props } = t
+                        if (state && k in state) {
+                            state[k] = v
+                        } else if (k in props) {
+                            console.warn(`Attempting to mutate prop "${ k }". Props are readonly.`)
+                        } else if (setupState && k in setupState) {
+                            setupState[k] = v
+                        }
+                        else {
+                            console.error('不存在')
+                        }
+                    }
+                })
+
+                created && created.call(renderContext)
+                effect(() => {
+                    const subTree = render.call(state, state)
+                    if (!instance.isMounted) {
+                        beforeMount && beforeMount.call(state)
+                        patch(null, subTree, container, anchor)
+                        // 遍历 instance.mounted 数组并诸葛执行即可
+                        instance.mounted && instance.mounted.forEach(hook => hook.call(renderContext))
+                        instance.isMounted = true
+                        mounted && mounted.call(state)
+                    } else {
+                        beforeUpdate && beforeUpdate.call(state)
+                        patch(instance.subTree, subTree, container, anchor)
+                        updated && updated.call(state)
+                    }
+                    instance.subTree = subTree
+                }, {
+                    scheduler: queueJob
+                })
+            }
+            function patchComponent (n1, n2, anchor) {
+                const instance = (n2.component = n1.component)
+                const { props } = instance
+                if (hasPropsChanged(n1.props, n2.props)) {
+                    const [nextProps] = resolveProps(n2.type.props, n2.props)
+                    for (const k in nextProps) {
+                        props[k] = nextProps[k]
+                    }
+                    for (const k in props) {
+                        if (!(k in nextProps)) delete props[k]
+                    }
+                }
+            }
+
+            function hasPropsChanged (
+                prevProps,
+                nextProps
+            ) {
+                const nextKeys = Object.keys(nextProps)
+                if (nextKeys.length !== Object.keys(prevProps).length) {
+                    return true
+                }
+                for (let i = 0;i < nextKeys.length;i++) {
+                    const key = nextKeys[i]
+                    if (nextProps[key] !== prevProps[key]) return true
+                }
+                return false
+            }
+            function resolveProps (options, propsData) {
+                const props = {}
+                const attrs = {}
+                for (const key in propsData) {
+                    if (key in options || key.startsWith('on')) {
+                        props[key] = propsData[key]
+                    } else {
+                        attrs[key] = propsData[key]
+                    }
+                }
+
+                return [props, attrs]
+            }
+
+            function patchChildren (n1, n2, container) {
+                if (typeof n2.children === 'string') {
+                    if (Array.isArray(n1.children)) {
+                        n1.children.forEach((c) => unmount(c))
+                    }
+                    setElementText(container, n2.children)
+                } else if (Array.isArray(n2.children)) {
+                    patchKeyedChildren(n1, n2, container)
+                } else {
+                    if (Array.isArray(n1.children)) {
+                        n1.children.forEach(c => unmount(c))
+                    } else if (typeof n1.children === 'string') {
+                        setElementText(container, '')
+                    }
+                }
+            }
+
+            function patchKeyedChildren (n1, n2, container) {
+                const newChildren = n2.children
+                const oldChildren = n1.children
+
+                let j = 0
+                let oldVNode = oldChildren[j]
+                let newVNode = newChildren[j]
+                while (oldVNode.key === newVNode.key) {
+                    patch(oldVNode, newVNode, container)
+                    j++
+                    oldVNode = oldChildren[j]
+                    newVNode = newChildren[j]
+                }
+                let oldEnd = oldChildren.length - 1
+                let newEnd = newChildren.length - 1
+
+                oldVNode = oldChildren[oldEnd]
+                newVNode = newChildren[newEnd]
+
+                while (oldVNode.key === newVNode.key) {
+                    patch(oldVNode, newVNode, container)
+                    oldEnd--
+                    newEnd--
+                    oldVNode = oldChildren[oldEnd]
+                    newVNode = newChildren[newEnd]
+                }
+                if (j > oldEnd && j <= newEnd) {
+                    const anchorIndex = newEnd + 1
+                    const anchor = anchorIndex < newChildren.length ? newChildren[anchorIndex].el : null
+                    while (j <= newEnd) {
+                        patch(null, newChildren[j++], container, anchor)
+                    }
+                } else if (j > newEnd && j <= oldEnd) {
+                    while (j <= oldEnd) {
+                        unmount(oldChildren[j++])
+                    }
+                } else {
+                    const count = newEnd - j + 1
+                    const source = new Array(count)
+                    source.fill(-1)
+
+                    const oldStart = j
+                    const newStart = j
+                    let moved = false
+                    let pos = 0
+
+                    const keyIndex = {}
+                    for (let i = newStart;i <= newEnd;i++) {
+                        keyIndex[newChildren[i].key] = i
+                    }
+                    let patched = 0
+                    for (let i = oldStart;i <= oldEnd;i++) {
+                        oldVNode = oldChildren[i]
+                        if (patched <= count) {
+                            const k = keyIndex[oldVNode.key]
+
+                            if (typeof k !== 'undefined') {
+                                newVNode = newChildren[k]
+                                patch(oldVNode, newVNode, container)
+                                source[k - newStart] = i
+                                if (k < pos) {
+                                    moved = true
+                                } else {
+                                    pos = k
+                                }
+                            } else {
+                                unmount(oldVNode)
+                            }
+                        } else {
+                            unmount(oldVNode)
+                        }
+                    }
+
+                    if (moved) {
+                        const seq = lis(source)
+                        let s = seq.length - 1
+                        let i = count - 1
+                        for (i;i >= 0;i--) {
+                            if (source[i] === -1) {
+                                const pos = i + newStart
+                                const newVNode = newChildren[pos]
+                                const nextPos = pos + 1
+                                const anchor = nextPos < newChildren.length
+                                    ? newChildren[nextPos].el
+                                    : null
+                                patch(null, newVNode, container, anchor)
+                            } else if (i !== seq[s]) {
+                                const pos = i + newStart
+                                const newVNode = newChildren[pos]
+                                const nextPos = pos + 1
+                                const anchor = nextPos < newChildren.length
+                                    ? newChildren[nextPos].el
+                                    : null
+                                insert(newVNode.el, container, anchor)
+                            } else {
+                                s--
+                            }
+                        }
+                    }
+                }
+            }
+            function lis (arr) {
+                const p = arr.slice()
+                const result = [0]
+                let i, j, u, v, c
+                const len = arr.length
+                for (i = 0;i < len;i++) {
+                    const arrI = arr[i]
+                    if (arrI !== 0) {
+                        j = result[result.length - 1]
+                        if (arr[j] < arrI) {
+                            p[i] = j
+                            result.push(i)
+                            continue
+                        }
+                        u = 0
+                        v = result.length - 1
+                        while (u < v) {
+                            c = ((u + v) / 2) | 0
+                            if (arr[result[c]] < arrI) {
+                                u = c + 1
+                            } else {
+                                v = c
+                            }
+                        }
+                        if (arrI < arr[result[u]]) {
+                            if (u > 0) {
+                                p[i] = result[u - 1]
+                            }
+                            result[u] = i
+                        }
+                    }
+                }
+                u = result.length
+                v = result[u - 1]
+                while (u-- > 0) {
+                    result[u] = v
+                    v = p[v]
+                }
+                return result
+            }
+            function patchElement (n1, n2) {
+                const el = n2.el = n1.el
+                const oldProps = n1.props
+                const newProps = n2.props
+
+                for (const key in newProps) {
+                    if (newProps[key] !== oldProps[key]) {
+                        patchProps(el, key, oldProps[key], newProps[key])
+                    }
+                }
+                for (const key in oldProps) {
+                    if (!(key in newProps)) {
+                        patchProps(el, key, oldProps[key], null)
+                    }
+                }
+
+                patchChildren(n1, n2, el)
+            }
+
+            // 卸载操作
+            function unmount (vnode) {
+                if (vnode.type === Fragment) {
+                    vnode.children.forEach(c => unmount(c))
+                    return
+                } else if (typeof vnode.type === 'object') {
+                    // vnode.shouldKeepAlive 是一个布尔值，用来标识该组件是否应该被 KeepAlive
+                    if (vnode.shouldKeepAlive) {
+                        // 对于需要被 KeepAlive 的组件，我们不应该真的卸载它，而应调用该组件的父组件，
+                        // 即 KeepAlive 组件的 _deActivate 函数使其失活
+                        vnode.keepAliveInstance._deActivate(vnode)
+                    } else {
+                        unmount(vnode.component.subTree)
+                    }
+                    return
+                }
+                const parent = vnode.el.parentNode
+                if (parent) {
+                    parent.removeChild(vnode.el)
+                }
+            }
+
+            function patch (n1, n2, container, anchor) {
+                if (n1 && n1.type !== n2.type) {
+                    unmount(n1)
+                    n1 = null
+                }
+
+                const { type } = n2
+
+                if (typeof type === 'string') {
+                    if (!n1) {
+                        mountElement(n2, container, anchor)
+                    } else {
+                        patchElement(n1, n2)
+                    }
+                } else if (type === Text) {
+                    if (!n1) {
+                        const el = n2.el = createText(n2.children)
+                        insert(el, container)
+                    } else {
+                        const el = n2.el = n1.el
+                        if (n2.children !== n1.children) {
+                            setText(el, n2.children)
+                        }
+                    }
+                } else if (type === Fragment) {
+                    if (!n1) {
+                        n2.children.forEach(c => patch(null, c, container))
+                    } else {
+                        patchChildren(n1, n2, container)
+                    }
+                } else if (typeof type === 'object' && type.__isTeleport) {
+                    // 组件选项中如果存在 __isTeleport 标识，则它是 Teleport 组件，
+                    // 调用 Teleport 组件选项中的 process 函数将控制权交接出去
+                    // 传递给 process 函数的第五个参数是渲染器的一些内部方法
+                    type.process(n1, n2, container, anchor, {
+                        patch,
+                        patchChildren,
+                        unmount,
+                        move (vnode, container, anchor) {
+                            insert(
+                                vnode.component
+                                    ? vnode.component.subTree.el  // 移动一个组件
+                                    : vnode.el,  // 移动普通元素
+                                container,
+                                anchor
+                            )
+                        }
+                    })
+                }
+                else if (typeof type === 'object' || typeof type === 'function') {
+                    if (!n1) {
+                        // 如果组件已经被 KeepAlive，则不会重新挂载它，而是会调用 _activate 来激活它
+                        if (n2.keptAlive) {
+                            n2.keepAliveInstance._activate(n2, container, anchor)
+                        } else {
+                            mountComponent(n2, container, anchor)
+                        }
+                    } else {
+                        patchComponent(n1, n2, anchor)
+                    }
+                }
+
+            }
+
+            function render (vnode, container) {
+                if (vnode) {
+                    patch(container._vnode, vnode, container)
+                } else {
+                    if (container._vnode) {
+                        unmount(container._vnode)
+                    }
+                }
+                container._vnode = vnode
+            }
+
+            return {
+                render
+            }
+        }
+
+        const renderer = createRenderer({
+            createElement (tag) {
+                return document.createElement(tag)
+            },
+            setElementText (el, text) {
+                el.textContent = text
+            },
+            insert (el, parent, anchor = null) {
+                parent.insertBefore(el, anchor)
+            },
+            createText (text) {
+                return document.createTextNode(text)
+            },
+            setText (el, text) {
+                el.nodeValue = text
+            },
+            patchProps (el, key, prevValue, nextValue) {
+                if (/^on/.test(key)) {
+                    const invokers = el._vei || (el._vei = {})
+                    let invoker = invokers[key]
+                    const name = key.slice(2).toLowerCase()
+                    if (nextValue) {
+                        if (!invoker) {
+                            invoker = el._vei[key] = (e) => {
+                                console.log(e.timeStamp)
+                                console.log(invoker.attached)
+                                if (e.timeStamp < invoker.attached) return
+                                if (Array.isArray(invoker.value)) {
+                                    invoker.value.forEach(fn => fn(e))
+                                } else {
+                                    invoker.value(e)
+                                }
+                            }
+                            invoker.value = nextValue
+                            invoker.attached = performance.now()
+                            el.addEventListener(name, invoker)
+                        } else {
+                            invoker.value = nextValue
+                        }
+                    } else if (invoker) {
+                        el.removeEventListener(name, invoker)
+                    }
+                } else if (key === 'class') {
+                    el.className = nextValue || ''
+                } else if (shouldSetAsProps(el, key, nextValue)) {
+                    const type = typeof el[key]
+                    if (type === 'boolean' && nextValue === '') {
+                        el[key] = true
+                    } else {
+                        el[key] = nextValue
+                    }
+                } else {
+                    el.setAttribute(key, nextValue)
+                }
+            }
+        })
+        const Text = Symbol()
+        const Fragment = Symbol()
+
+        const Teleport = {
+            __isTeleport: true,
+            process (n1, n2, container, anchor, internals) {
+                // 通过 internals 参数取得渲染器的内部方法
+                const { patch } = internals
+                // 如果旧 VNode n1 不存在，则是全新的挂载，否则执行更新
+                if (!n1) {
+                    // 挂载
+                    // 获取容器，即挂载点
+                    const target = typeof n2.props.to === 'string'
+                        ? document.querySelector(n2.props.to)
+                        : n2.props.to
+                    // 将 n2.children 渲染到指定挂载点即可
+                    n2.children.forEach(c => patch(null, c, target, anchor))
+                } else {
+                    // 更新
+                    patchChildren(n1, n2, container)
+                    // 如果新旧 to 参数的值不同，则需要对内容进行移动
+                    if (n2.props.to !== n1.props.to) {
+                        // 获取新的容器
+                        const newTarget = typeof n2.props.to === 'string'
+                            ? document.querySelector(n2.props.to)
+                            : n2.props.to
+                        // 移动到新的容器
+                        n2.children.forEach(c => move(c, newTarget))
+                    }
+                }
+            }
+        }
+
+        function MyFuncComp (props) {
+            return { type: 'h1', children: props.title }
+        }
+        // 定义 props
+        MyFuncComp.props = {
+            title: String
+        }
+
+        renderer.render(MyFuncComp, document.querySelector('#app'))
+
+    </script>
+</body>
+
+</html>
