@@ -681,7 +681,7 @@
             __isTeleport: true,
             process (n1, n2, container, anchor, internals) {
                 // 通过 internals 参数取得渲染器的内部方法
-                const { patch } = internals
+                const { patch, patchChildren, move } = internals
                 // 如果旧 VNode n1 不存在，则是全新的挂载，否则执行更新
                 if (!n1) {
                     // 挂载
