@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <style>
+        .box {
+            width: 100px;
+            height: 100px;
+            background-color: red;
+        }
+
+        .enter-from {
+            transform: translateX(200px);
+        }
+
+        .enter-to {
+            transform: translateX(0);
+        }
+
+        .enter-active {
+            transition: transform 1s ease-in-out;
+        }
+
+        /* 初始状态 */
+        .leave-from {
+            transform: translateX(0);
+        }
+
+        /* 结束状态 */
+        .leave-to {
+            transform: translateX(200px);
+        }
+
+        /* 过渡过程 */
+        .leave-active {
+            transition: transform 2s ease-out;
+        }
+    </style>
+</head>
+
+<body>
+    <script> // 创建 class 为 box 的 DOM 元素
+        // 创建 class 为 box 的 DOM 元素
+        const el = document.createElement('div')
+        el.classList.add('box')
+
+        // 在 DOM 元素被添加到页面之前，将初始状态和运动过程定义到元素上
+        el.classList.add('enter-from')    // 初始状态
+        el.classList.add('enter-active')  // 运动过程
+
+        // 将元素添加到页面
+        document.body.appendChild(el)
+
+        // 嵌套调用 requestAnimationFrame
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                el.classList.remove('enter-from')  // 移除 enter-from
+                el.classList.add('enter-to')       // 添加 enter-to
+
+                // 监听 transitionend 事件完成收尾工作
+                el.addEventListener('transitionend', () => {
+                    el.classList.remove('enter-to')
+                    el.classList.remove('enter-active')
+                })
+            })
+        })
+        el.addEventListener('click', () => {
+            // 将卸载动作封装到 performRemove 函数中
+            const performRemove = () => el.parentNode.removeChild(el)
+
+            // 设置初始状态：添加 leave-from 和 leave-active 类
+            el.classList.add('leave-from')
+            el.classList.add('leave-active')
+
+            // 强制 reflow：使初始状态生效
+            document.body.offsetHeight
+
+            // 在下一帧切换状态
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    // 切换到结束状态
+                    el.classList.remove('leave-from')
+                    el.classList.add('leave-to')
+
+                    // 监听 transitionend 事件做收尾工作
+                    el.addEventListener('transitionend', () => {
+                        el.classList.remove('leave-to')
+                        el.classList.remove('leave-active')
+                        // 当过渡完成后，记得调用 performRemove 函数将 DOM 元素移除
+                        performRemove()
+                    })
+                })
+            })
+        })
+    </script>
+</body>
+
+</html>

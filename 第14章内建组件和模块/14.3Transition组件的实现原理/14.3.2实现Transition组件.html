@@ -42,8 +42,18 @@
                         patchProps(el, key, null, vnode.props[key])
                     }
                 }
+                // 判断一个 VNode 是否需要过渡
+                const needTransition = vnode.transition
+                if (needTransition) {
+                    // 调用 transition.beforeEnter 钩子，并将 DOM 元素作为参数传递
+                    vnode.transition.beforeEnter(el)
+                }
 
                 insert(el, container, anchor)
+                if (needTransition) {
+                    // 调用 transition.enter 钩子，并将 DOM 元素作为参数传递
+                    vnode.transition.enter(el)
+                }
             }
 
             const queue = new Set()
@@ -516,16 +526,14 @@
                 patchChildren(n1, n2, el)
             }
 
-            // 卸载操作
             function unmount (vnode) {
+                // 判断 VNode 是否需要过渡处理
+                const needTransition = vnode.transition
                 if (vnode.type === Fragment) {
                     vnode.children.forEach(c => unmount(c))
                     return
                 } else if (typeof vnode.type === 'object') {
-                    // vnode.shouldKeepAlive 是一个布尔值，用来标识该组件是否应该被 KeepAlive
                     if (vnode.shouldKeepAlive) {
-                        // 对于需要被 KeepAlive 的组件，我们不应该真的卸载它，而应调用该组件的父组件，
-                        // 即 KeepAlive 组件的 _deActivate 函数使其失活
                         vnode.keepAliveInstance._deActivate(vnode)
                     } else {
                         unmount(vnode.component.subTree)
@@ -534,7 +542,16 @@
                 }
                 const parent = vnode.el.parentNode
                 if (parent) {
-                    parent.removeChild(vnode.el)
+                    // 将卸载动作封装到 performRemove 函数中
+                    const performRemove = () => parent.removeChild(vnode.el)
+                    if (needTransition) {
+                        // 如果需要过渡处理，则调用 transition.leave 钩子，
+                        // 同时将 DOM 元素和 performRemove 函数作为参数传递
+                        vnode.transition.leave(vnode.el, performRemove)
+                    } else {
+                        // 如果不需要过渡处理，则直接执行卸载操作
+                        performRemove()
+                    }
                 }
             }
 
@@ -677,32 +694,55 @@
         const Text = Symbol()
         const Fragment = Symbol()
 
-        const Teleport = {
-            __isTeleport: true,
-            process (n1, n2, container, anchor, internals) {
-                // 通过 internals 参数取得渲染器的内部方法
-                const { patch, patchChildren, move } = internals
-                // 如果旧 VNode n1 不存在，则是全新的挂载，否则执行更新
-                if (!n1) {
-                    // 挂载
-                    // 获取容器，即挂载点
-                    const target = typeof n2.props.to === 'string'
-                        ? document.querySelector(n2.props.to)
-                        : n2.props.to
-                    // 将 n2.children 渲染到指定挂载点即可
-                    n2.children.forEach(c => patch(null, c, target, anchor))
-                } else {
-                    // 更新
-                    patchChildren(n1, n2, container)
-                    // 如果新旧 to 参数的值不同，则需要对内容进行移动
-                    if (n2.props.to !== n1.props.to) {
-                        // 获取新的容器
-                        const newTarget = typeof n2.props.to === 'string'
-                            ? document.querySelector(n2.props.to)
-                            : n2.props.to
-                        // 移动到新的容器
-                        n2.children.forEach(c => move(c, newTarget))
+        const Transition = {
+            name: 'Transition',
+            setup (props, { slots }) {
+                return () => {
+                    const innerVNode = slots.default()
+
+                    innerVNode.transition = {
+                        beforeEnter (el) {
+                            // 设置初始状态：添加 enter-from 和 enter-active 类
+                            el.classList.add('enter-from')
+                            el.classList.add('enter-active')
+                        },
+                        enter (el) {
+                            // 在下一帧切换到结束状态
+                            nextFrame(() => {
+                                // 移除 enter-from 类，添加 enter-to 类
+                                el.classList.remove('enter-from')
+                                el.classList.add('enter-to')
+                                // 监听 transitionend 事件完成收尾工作
+                                el.addEventListener('transitionend', () => {
+                                    el.classList.remove('enter-to')
+                                    el.classList.remove('enter-active')
+                                })
+                            })
+                        },
+                        leave (el, performRemove) {
+                            // 设置离场过渡的初始状态：添加 leave-from 和 leave-active 类
+                            el.classList.add('leave-from')
+                            el.classList.add('leave-active')
+                            // 强制 reflow，使得初始状态生效
+                            document.body.offsetHeight
+                            // 在下一帧修改状态
+                            nextFrame(() => {
+                                // 移除 leave-from 类，添加 leave-to 类
+                                el.classList.remove('leave-from')
+                                el.classList.add('leave-to')
+
+                                // 监听 transitionend 事件完成收尾工作
+                                el.addEventListener('transitionend', () => {
+                                    el.classList.remove('leave-to')
+                                    el.classList.remove('leave-active')
+                                    // 调用 transition.leave 钩子函数的第二个参数，完成 DOM 元素的卸载
+                                    performRemove()
+                                })
+                            })
+                        }
                     }
+
+                    return innerVNode
                 }
             }
         }
